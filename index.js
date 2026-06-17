@@ -35,7 +35,7 @@ async function setupDatabase() {
 }
 setupDatabase();
 
-// 2. Configuração da IA (Usando o modelo que está na sua lista: gemini-2.5-flash)
+// 2. Configuração da IA (Usando o modelo que está na sua lista: gemini-2.0-flash)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const tools = [{
