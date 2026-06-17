@@ -1,0 +1,14 @@
+{
+  "name": "backend-bmroad",
+  "version": "1.0.0",
+  "description": "Motor de IA e Micro-CRM da BM Road",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  }
+}
