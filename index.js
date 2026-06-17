@@ -7,7 +7,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 1. Configuração do Banco de Dados PostgreSQL
 const pool = new Pool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -21,85 +20,103 @@ async function setupDatabase() {
         await pool.query(`
             CREATE TABLE IF NOT EXISTS leads (
                 id SERIAL PRIMARY KEY,
-                nome VARCHAR(255) NOT NULL,
-                cnpj VARCHAR(50) NOT NULL,
+                nome_empresa VARCHAR(255),
+                cnpj VARCHAR(50),
+                nome_pessoa VARCHAR(255),
+                telefone VARCHAR(50),
                 origem VARCHAR(255),
                 destino VARCHAR(255),
+                peso VARCHAR(50),
+                volume VARCHAR(255),
+                valor_nf VARCHAR(50),
+                recorrencia VARCHAR(50),
                 data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log("✅ Tabela de CRM verificada/criada com sucesso.");
-    } catch (err) {
-        console.error("❌ Erro ao criar tabela no PostgreSQL:", err);
-    }
+    } catch (err) { console.error("Erro no DB:", err); }
 }
 setupDatabase();
 
-// 2. Configuração da IA (Usando o modelo que está na sua lista: gemini-2.5-flash)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const tools = [{
-    functionDeclarations: [{
-        name: "salvar_lead_crm",
-        description: "Salva os dados do lead no banco de dados CRM.",
-        parameters: {
-            type: "OBJECT",
-            properties: {
-                nome: { type: "STRING" },
-                cnpj: { type: "STRING" },
-                origem: { type: "STRING" },
-                destino: { type: "STRING" }
-            },
-            required: ["nome", "cnpj"]
+    functionDeclarations: [
+        {
+            name: "verificar_cliente",
+            description: "Consulta o banco de dados pelo CNPJ para ver se já é cliente.",
+            parameters: { type: "OBJECT", properties: { cnpj: { type: "STRING" } }, required: ["cnpj"] }
+        },
+        {
+            name: "salvar_lead_crm",
+            description: "Salva todos os dados do lead no CRM ao final do atendimento.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    nome_empresa: { type: "STRING" }, cnpj: { type: "STRING" },
+                    nome_pessoa: { type: "STRING" }, telefone: { type: "STRING" },
+                    origem: { type: "STRING" }, destino: { type: "STRING" },
+                    peso: { type: "STRING" }, volume: { type: "STRING" },
+                    valor_nf: { type: "STRING" }, recorrencia: { type: "STRING" }
+                }
+            }
+        },
+        {
+            name: "calcular_frete",
+            description: "Calcula o frete com base nos dados. EM CONSTRUÇÃO.",
+            parameters: { type: "OBJECT", properties: { peso: { type: "STRING" }, rota: { type: "STRING" } } }
         }
-    }]
+    ]
 }];
 
-const instrucoesSistema = "Você é a assistente virtual da BM Road Transportes. Seja profissional e objetiva. Ao receber nome e CNPJ, use a ferramenta salvar_lead_crm.";
+const instrucoesSistema = `
+Você é a Isa, assistente humana e muito prestativa da BM Road Transportes.
+IDENTIDADE: Amigável, natural, nunca soa como robô. Se a resposta for longa ou complexa, finja que está a escrever ("...") por alguns segundos.
+FLUXO OBRIGATÓRIO:
+1. Identifique o cliente: Pergunte Nome da Empresa e CNPJ. Use a ferramenta 'verificar_cliente'.
+2. Se for cliente antigo, cumprimente calorosamente. Se novo, continue o fluxo.
+3. Solicite Origem e Destino.
+4. Solicite Nome da pessoa e Telefone de contato.
+5. Solicite Peso, Volume, Valor da NF e se a carga é recorrente ou única.
+6. Finalização: Agradeça e avise que um consultor entrará em contato.
+REGRAS: 
+- NUNCA diga "Salvei no CRM" ou termos técnicos.
+- Não peça informações que já foram dadas anteriormente.
+- Só use 'salvar_lead_crm' no último passo.
+`;
 
-// 3. Rota de Chat
 app.post('/api/chat', async (req, res) => {
-    const userMessage = req.body.message;
-    const history = req.body.history || [];
-
+    const { message, history } = req.body;
     try {
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash", // MODELO CORRIGIDO AQUI
-            tools: tools,
-            systemInstruction: instrucoesSistema,
-        });
-
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", tools, systemInstruction: instrucoesSistema });
         const chat = model.startChat({ history: history });
-        const result = await chat.sendMessage(userMessage);
         
+        const result = await chat.sendMessage(message);
         let aiResponseText = result.response.text();
         const functionCalls = result.response.functionCalls;
 
-        if (functionCalls && functionCalls.length > 0) {
-            const call = functionCalls[0];
-            if (call.name === "salvar_lead_crm") {
-                const { nome, cnpj, origem, destino } = call.args;
-                await pool.query(
-                    'INSERT INTO leads (nome, cnpj, origem, destino) VALUES ($1, $2, $3, $4)',
-                    [nome, cnpj, origem || 'Não informado', destino || 'Não informado']
-                );
-                const functionResponseResult = await chat.sendMessage([{
-                    functionResponse: { name: "salvar_lead_crm", response: { success: true } }
-                }]);
-                aiResponseText = functionResponseResult.response.text();
+        if (functionCalls) {
+            for (const call of functionCalls) {
+                if (call.name === "verificar_cliente") {
+                    const resDb = await pool.query('SELECT nome_empresa FROM leads WHERE cnpj = $1 LIMIT 1', [call.args.cnpj]);
+                    const resposta = resDb.rows.length > 0 ? `Cliente recorrente: ${resDb.rows[0].nome_empresa}` : "Cliente novo";
+                    const response = await chat.sendMessage([{ functionResponse: { name: "verificar_cliente", response: { status: resposta } } }]);
+                    aiResponseText = response.response.text();
+                }
+                if (call.name === "salvar_lead_crm") {
+                    const args = call.args;
+                    await pool.query('INSERT INTO leads (nome_empresa, cnpj, nome_pessoa, telefone, origem, destino, peso, volume, valor_nf, recorrencia) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', 
+                        [args.nome_empresa, args.cnpj, args.nome_pessoa, args.telefone, args.origem, args.destino, args.peso, args.volume, args.valor_nf, args.recorrencia]);
+                    aiResponseText = "Perfeito, anotei tudo! Um de nossos consultores entrará em contato em breve para fechar os detalhes.";
+                }
+                if (call.name === "calcular_frete") {
+                    aiResponseText = "Estou a processar os dados da rota... em breve teremos o valor exato, mas já anotei o seu pedido!";
+                }
             }
         }
-
-        const updatedHistory = await chat.getHistory();
-        res.json({ reply: aiResponseText, history: updatedHistory });
-
+        res.json({ reply: aiResponseText, history: await chat.getHistory() });
     } catch (error) {
-        console.error("Erro na API do Chat:", error);
-        res.status(500).json({ reply: "Desculpe, nosso sistema está passando por uma atualização rápida.", history });
+        res.status(500).json({ reply: "A Isa está a recalibrar a rota, tente em um segundo!" });
     }
 });
 
-app.get('/', (req, res) => res.send('API BM Road 100% Operacional'));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor a rodar na porta ${PORT}`));
+app.listen(3000, () => console.log("Servidor ativo"));
