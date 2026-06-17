@@ -60,7 +60,7 @@ REGRAS:
 app.post('/api/chat', async (req, res) => {
     const { message, history } = req.body;
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2-flash", tools, systemInstruction: instrucoesSistema });
+        const model = genAI.getGenerativeModel({ model: "gemini-2,5-flash", tools, systemInstruction: instrucoesSistema });
         const chat = model.startChat({ history: history });
         
         await delay(Math.floor(Math.random() * 1000) + 1500); 
