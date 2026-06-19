@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Motor de IA e Micro-CRM da BM Road",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
