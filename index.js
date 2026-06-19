@@ -36,18 +36,29 @@ const tools = [{
 
 // --- FUNÇÕES DE VALIDAÇÃO (SEGURANÇA) ---
 
-// 1. Valida Telefone Fixo (10 dígitos) ou Celular (11 dígitos) com DDD válido
+// 1. Valida Telefone Fixo (10 dígitos) ou Celular (11 dígitos) com DDD e Filtro Anti-Lixo
 function validarTelefoneBR(telefone) {
-    if (!telefone) return true; // Se não enviou, passa (avalia só se enviou)
-    const numeros = telefone.replace(/\D/g, ''); // Remove tudo que não é número
+    if (!telefone) return true; 
+    const numeros = telefone.replace(/\D/g, ''); 
+    
+    // Verifica o tamanho
     if (numeros.length !== 10 && numeros.length !== 11) return false;
     
+    // Verifica DDD válido
     const ddd = parseInt(numeros.substring(0, 2));
-    if (ddd < 11 || ddd > 99) return false; // DDD inválido no Brasil
+    if (ddd < 11 || ddd > 99) return false;
 
-    // Se for celular (11 dígitos), o terceiro dígito tem que ser 9
+    // Se for celular (11 dígitos), o terceiro dígito tem que ser obrigatoriamente 9
     if (numeros.length === 11 && numeros.charAt(2) !== '9') return false;
     
+    // FILTRO ANTI-PREGUIÇA: Bloqueia números onde todos os dígitos após o DDD são iguais (ex: 11999999999)
+    const numeroSemDDD = numeros.substring(2);
+    const todosIguais = /^(\d)\1+$/.test(numeroSemDDD);
+    if (todosIguais) return false;
+    
+    // Bloqueia sequências clássicas de teste
+    if (numeroSemDDD === '123456789' || numeroSemDDD === '12345678') return false;
+
     return true;
 }
 
