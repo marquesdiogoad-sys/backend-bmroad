@@ -87,7 +87,7 @@ app.post('/api/chat', async (req, res) => {
 
     try {
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash-lite", // Modelo ultra-rápido e económico
+            model: "gemini-2-flash-lite", // Modelo ultra-rápido e económico
             tools: tools,
             systemInstruction: isaSystemInstruction,
         });
