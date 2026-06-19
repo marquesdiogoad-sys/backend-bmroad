@@ -47,7 +47,7 @@ app.post('/api/chat', async (req, res) => {
     try {
         // Prepara o modelo Gemini com as nossas regras rigorosas
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash", // Modelo rápido, estável e perfeito para Function Calling
+            model: "gemini-2-flash", // Modelo rápido, estável e perfeito para Function Calling
             tools: tools,
             systemInstruction: isaSystemInstruction,
         });
