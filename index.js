@@ -171,7 +171,76 @@ app.post('/api/chat', async (req, res) => {
         res.status(500).json({ reply: "Peço imensa desculpa, estou a ter uma pequena falha de conexão. Podemos retomar?", history, threadId });
     }
 });
+// --- FUNÇÃO AUXILIAR: VALIDAÇÃO DE E-MAIL CORPORATIVO ---
+function isEmailCorporativo(email) {
+    const provedoresGratuitos = [
+        'gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 
+        'yahoo.com.br', 'bol.com.br', 'uol.com.br', 'ig.com.br', 
+        'icloud.com', 'msn.com'
+    ];
+    const dominio = email.split('@')[1];
+    if (!dominio) return false;
+    return !provedoresGratuitos.includes(dominio.toLowerCase());
+}
 
+// --- ROTA DO FORMULÁRIO ESTÁTICO DO SITE ---
+app.post('/api/formulario', async (req, res) => {
+    const { nome, email, telefone, cnpj, necessidade, mensagem } = req.body;
+    const threadId = `form_${Date.now()}`; // Identificador único da cotação
+
+    try {
+        // 1. VALIDAÇÃO DE E-MAIL CORPORATIVO
+        if (!isEmailCorporativo(email)) {
+            // Se for e-mail gratuito, bloqueia e avisa o Frontend
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Por favor, utilize um e-mail corporativo válido para solicitar a cotação.' 
+            });
+        }
+
+        // 2. BUSCA INTELIGENTE DE CNPJ (Receita Federal)
+        let empresaReal = 'Não informada';
+        let cnpjLimpo = cnpj ? cnpj.replace(/\D/g, '') : null;
+
+        if (cnpjLimpo && cnpjLimpo.length === 14) {
+            // Reaproveitamos a função consultarCNPJ que já criamos para a Isa!
+            const validacao = await consultarCNPJ(cnpjLimpo); 
+            if (validacao.valido && validacao.razao_social) {
+                empresaReal = validacao.razao_social; // Auto-preenche com o nome oficial!
+            }
+        }
+
+        // 3. SALVAR NO POSTGRESQL (Agora com a coluna "email" dedicada)
+        const observacoes = `Mensagem original do cliente: ${mensagem}`;
+
+        await pool.query(`
+            INSERT INTO leads_cotacoes 
+            (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status, thread_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `, [
+            nome, 
+            empresaReal, 
+            cnpjLimpo, 
+            telefone,
+            email, // <-- A nossa nova coluna em ação
+            necessidade, 
+            observacoes, 
+            'Formulario Site', 
+            'Novo Lead', 
+            threadId
+        ]);
+
+        // 4. SISTEMA DE NOTIFICAÇÃO (Gatilho)
+        console.log(`🔔 NOTIFICAÇÃO: Novo lead B2B de Alta Intenção! Empresa: ${empresaReal} | Contato: ${nome}`);
+        // TODO: Adicionar o webhook para envio de mensagem para o WhatsApp do Gestor
+
+        // Tudo certo! Responde com Sucesso para o Site.
+        res.status(200).json({ success: true, message: 'Proposta solicitada com sucesso!' });
+    } catch (error) {
+        console.error("🚨 Erro na API do Formulário:", error);
+        res.status(500).json({ success: false, message: 'Ocorreu um erro interno ao processar a cotação.' });
+    }
+});
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road: Blindado e Operacional!'));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
