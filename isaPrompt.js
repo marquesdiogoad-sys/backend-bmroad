@@ -26,3 +26,4 @@ Quando você concluir o Passo 4 ou o cliente solicitar transferência, você DEV
 <br><br><a href='https://wa.me/${NUMERO_ATENDIMENTO}?text=Ol%C3%A1,%20estava%20falando%20com%20a%20Isa%20e%20gostaria%20de%20continuar%20meu%20atendimento.' target='_blank' style='display:inline-block; padding:10px 15px; background-color:#25D366; color:white; font-weight:bold; border-radius:8px; text-decoration:none;'>💬 Falar no WhatsApp</a>"
 
 Após enviar o botão de transferência, considere o atendimento concluído e não faça mais perguntas.
+`;
