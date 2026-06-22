@@ -185,15 +185,29 @@ app.post('/api/formulario', async (req, res) => {
             });
         }
 
-        let empresaReal = 'Não informada';
-        let cnpjLimpo = cnpj ? cnpj.replace(/\D/g, '') : null;
+       // 2. TRAVA DE SEGURANÇA B2B: CNPJ OBRIGATÓRIO E VÁLIDO
+        let cnpjLimpo = cnpj ? cnpj.replace(/\D/g, '') : '';
 
-        if (cnpjLimpo && cnpjLimpo.length === 14) {
-            const validacao = await consultarCNPJ(cnpjLimpo);
-            if (validacao.valido && validacao.razao_social) {
-                empresaReal = validacao.razao_social;
-            }
+        // Bloqueia se não tiver exatamente 14 números (evita testes preguiçosos)
+        if (cnpjLimpo.length !== 14) {
+            return res.status(400).json({
+                success: false,
+                message: 'CNPJ inválido. Por favor, digite os 14 números corretamente.'
+            });
         }
+
+        // Vai à Receita Federal conferir se a empresa realmente existe
+        const validacao = await consultarCNPJ(cnpjLimpo);
+        
+        if (!validacao.valido || !validacao.razao_social) {
+            return res.status(400).json({
+                success: false,
+                message: 'CNPJ não encontrado na Receita Federal. Verifique os dados digitados.'
+            });
+        }
+
+        // Se passou por todas as travas, guardamos o nome oficial da empresa
+        let empresaReal = validacao.razao_social;
 
         const observacoes = `Mensagem original do cliente: ${mensagem}`;
 
