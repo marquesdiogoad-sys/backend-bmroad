@@ -35,7 +35,6 @@ const ferramentas = [{
 }];
 
 // --- FUNÇÕES DE VALIDAÇÃO (SEGURANÇA) ---
-
 function validarTelefoneBR(telefone) {
     if (!telefone) return true;
     const numeros = telefone.replace(/\D/g, '');
@@ -187,10 +186,21 @@ app.post('/api/chat', async (req, res) => {
                             INSERT INTO leads_cotacoes
                             (cnpj, empresa, rota_origem, rota_destino, nome_contato, telefone, peso_carga, volume_carga, valor_nf, thread_id)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        `, valoresBD);
+                        `, [
+                            args.cnpj ?? null,
+                            args.empresa ?? 'Não informada',
+                            args.rota_origem ?? 'A definir',
+                            args.rota_destino ?? 'A definir',
+                            args.nome_contato ?? 'Em atendimento...',
+                            args.telefone ?? 'Aguardando...',
+                            args.peso_carga ?? null,
+                            args.volume_carga ?? null,
+                            args.valor_nf ?? null,
+                            threadId
+                        ]);
                     }
-                    
-                    // DISPARO WHATSAPP VIA CHAT (Apenas quando a Isa apertar o botão de finalizar/transferir)
+
+                    // DISPARO WHATSAPP VIA CHAT
                     if (args.cotacao_finalizada) {
                         const origem = args.rota_origem || "Não informada";
                         const destino = args.rota_destino || "Não informada";
@@ -304,9 +314,6 @@ app.post('/api/formulario', async (req, res) => {
 });
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
