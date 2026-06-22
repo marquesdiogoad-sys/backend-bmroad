@@ -27,7 +27,9 @@ const ferramentas = [{
                 telefone: { type: "STRING", description: "Telefone ou WhatsApp do cliente com DDD" },
                 peso_carga: { type: "STRING", description: "Peso estimado da carga" },
                 volume_carga: { type: "STRING", description: "Volume ou dimensões da carga" },
-                valor_nf: { type: "NUMBER", description: "Valor da Nota Fiscal (apenas números)" }
+                valor_nf: { type: "NUMBER", description: "Valor da Nota Fiscal (apenas números)" },
+                // NOVO: O botão de disparo da IA
+                cotacao_finalizada: { type: "BOOLEAN", description: "MUDE PARA TRUE APENAS quando terminar de coletar a rota, carga e contato, OU se o cliente pedir para falar com humano." }
             }
         }
     }]
@@ -166,6 +168,22 @@ app.post('/api/chat', async (req, res) => {
                     }
                 }
 
+                // NOVO: DISPARO DO WHATSAPP VIA CHAT (Apenas quando a Isa finalizar)
+                if (podeSalvar && args.cotacao_finalizada) {
+                    const origem = args.rota_origem || "Não informada";
+                    const destino = args.rota_destino || "Não informada";
+                    const mercadoria = `Peso/Vol: ${args.peso_carga || ''} ${args.volume_carga || ''}`.trim();
+                    const demandaChat = `[ATENDIMENTO IA] Rota: ${origem} -> ${destino} | ${mercadoria}`;
+
+                    await enviarAlertaWhatsApp(
+                        args.nome_contato || "Não informado", 
+                        args.empresa || "Não informada", 
+                        args.telefone || "Não informado", 
+                        demandaChat
+                    );
+                }
+
+                
                 const functionResponseResult = await chat.sendMessage([{
                     functionResponse: {
                         name: "salvar_dados_crm",
