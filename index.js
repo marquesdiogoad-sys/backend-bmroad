@@ -181,7 +181,7 @@ app.post('/api/formulario', async (req, res) => {
         if (!isEmailCorporativo(email)) {
             return res.status(400).json({
                 success: false,
-                message: 'Por favor, utilize um e-mail corporativo válido para solicitar a cotação.'
+                message: 'Por favor, utilize um e-mail corporativo válido para solicitar o contato.'
             });
         }
 
@@ -197,10 +197,11 @@ app.post('/api/formulario', async (req, res) => {
 
         const observacoes = `Mensagem original do cliente: ${mensagem}`;
 
+        // Inserção corrigida com 'A definir' para evitar o erro NOT NULL do banco
         await pool.query(`
             INSERT INTO leads_cotacoes
-            (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status, thread_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status, thread_id, rota_origem, rota_destino)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         `, [
             nome,
             empresaReal,
@@ -211,16 +212,18 @@ app.post('/api/formulario', async (req, res) => {
             observacoes,
             'Formulario Site',
             'Novo Lead',
-            threadId
+            threadId,
+            'A definir', // Resolve o erro de rota_origem vazia
+            'A definir'  // Resolve o erro de rota_destino vazia
         ]);
 
-        console.log(`🔔 NOTIFICAÇÃO: Novo lead B2B de Alta Intenção! Empresa: ${empresaReal} | Contato: ${nome}`);
+        console.log(`🔔 NOTIFICAÇÃO: Novo lead via formulário! Empresa: ${empresaReal} | Contato: ${nome}`);
 
-        res.status(200).json({ success: true, message: 'Proposta solicitada com sucesso!' });
+        res.status(200).json({ success: true, message: 'Formulário enviado com sucesso!' });
 
     } catch (erro) {
         console.error("🚨 Erro na API do Formulário:", erro);
-        res.status(500).json({ success: false, message: 'Ocorreu um erro interno ao processar a cotação.' });
+        res.status(500).json({ success: false, message: 'Ocorreu um erro interno ao enviar o formulário.' });
     }
 });
 
