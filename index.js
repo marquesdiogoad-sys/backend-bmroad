@@ -28,7 +28,6 @@ const ferramentas = [{
                 peso_carga: { type: "STRING", description: "Peso estimado da carga" },
                 volume_carga: { type: "STRING", description: "Volume ou dimensões da carga" },
                 valor_nf: { type: "NUMBER", description: "Valor da Nota Fiscal (apenas números)" },
-                // NOVO: O botão de disparo da IA
                 cotacao_finalizada: { type: "BOOLEAN", description: "MUDE PARA TRUE APENAS quando terminar de coletar a rota, carga e contato, OU se o cliente pedir para falar com humano." }
             }
         }
@@ -51,25 +50,20 @@ function validarTelefoneBR(telefone) {
     return true;
 }
 
-// NOVO MOTOR V8: Tripla Validação de CNPJ (Implacável mas Inteligente)
 async function consultarCNPJ(cnpjOriginal) {
     if (!cnpjOriginal) return { valido: false, erro: "CNPJ é obrigatório." };
     const cnpjNumeros = cnpjOriginal.replace(/\D/g, '');
     if (cnpjNumeros.length !== 14) return { valido: false, erro: "O CNPJ precisa ter exatamente 14 números." };
 
-    // Tentativa 1: CNPJ.ws (Melhor compatibilidade com servidores VPS)
     try {
         const res1 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjNumeros}`);
         if (res1.ok) {
             const data1 = await res1.json();
             return { valido: true, razao_social: data1.razao_social };
         }
-        if (res1.status === 404 || res1.status === 400) {
-            return { valido: false, erro: "CNPJ não existe na base da Receita." };
-        }
-    } catch (e) { console.log("Tentativa 1 falhou. Tentando próxima..."); }
+        if (res1.status === 404 || res1.status === 400) return { valido: false, erro: "CNPJ não existe na base da Receita." };
+    } catch (e) { console.log("Tentativa 1 falhou."); }
 
-    // Tentativa 2: ReceitaWS
     try {
         const res2 = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpjNumeros}`);
         if (res2.ok) {
@@ -77,24 +71,39 @@ async function consultarCNPJ(cnpjOriginal) {
             if (data2.status === "ERROR") return { valido: false, erro: "CNPJ rejeitado pela Receita." };
             return { valido: true, razao_social: data2.nome };
         }
-    } catch (e) { console.log("Tentativa 2 falhou. Tentando próxima..."); }
+    } catch (e) { console.log("Tentativa 2 falhou."); }
 
-    // Tentativa 3: BrasilAPI
     try {
         const res3 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjNumeros}`);
         if (res3.ok) {
             const data3 = await res3.json();
             return { valido: true, razao_social: data3.razao_social };
         }
-        if (res3.status === 404 || res3.status === 400) {
-             return { valido: false, erro: "CNPJ inválido ou não encontrado." };
-        }
+        if (res3.status === 404 || res3.status === 400) return { valido: false, erro: "CNPJ inválido ou não encontrado." };
     } catch (e) { console.log("Tentativa 3 falhou."); }
 
-    // Se o CNPJ for falso de verdade, as APIs retornam 404 e caem nos ifs acima.
-    // Se o código chegou aqui, as 3 APIs bloquearam nosso servidor momentaneamente.
-    // Para mantermos a trava RÍGIDA de que você não abre mão, não deixamos passar de jeito nenhum.
     return { valido: false, erro: "Instabilidade na verificação com a Receita. Confirme o CNPJ ou tente em instantes." };
+}
+
+// --- FUNÇÃO DE DISPARO WHATSAPP (ISOLADA E BLINDADA) ---
+async function enviarAlertaWhatsApp(nome, empresa, telefone, necessidade) {
+    const numero = "5511954937948";
+    const apiKey = "8836652";
+    
+    const textoBruto = `🚨 *NOVO LEAD BM ROAD!*\n\n*Empresa:* ${empresa}\n*Contato:* ${nome}\n*Telefone:* ${telefone}\n*Demanda:* ${necessidade}\n\n🔥 _Acesse o CRM para ver os detalhes!_`;
+    const textoCodificado = encodeURIComponent(textoBruto);
+    const url = `https://api.callmebot.com/whatsapp.php?phone=${numero}&text=${textoCodificado}&apikey=${apiKey}`;
+
+    try {
+        const response = await fetch(url);
+        if (response.ok) {
+            console.log("✅ Alerta de WhatsApp disparado com sucesso!");
+        } else {
+            console.error("⚠️ Falha ao disparar WhatsApp. Status:", response.status);
+        }
+    } catch (error) {
+        console.error("🚨 Erro na requisição do WhatsApp:", error);
+    }
 }
 
 // --- ROTA PRINCIPAL DO CHAT ---
@@ -140,6 +149,20 @@ app.post('/api/chat', async (req, res) => {
                 }
 
                 if (podeSalvar) {
+                    // BLINDAGEM: Converte propriedades que a IA não descobriu (undefined) em null para o banco de dados
+                    const valoresBD = [
+                        args.cnpj ?? null,
+                        args.empresa ?? null,
+                        args.rota_origem ?? null,
+                        args.rota_destino ?? null,
+                        args.nome_contato ?? null,
+                        args.telefone ?? null,
+                        args.peso_carga ?? null,
+                        args.volume_carga ?? null,
+                        args.valor_nf ?? null,
+                        threadId
+                    ];
+
                     const queryVerifica = 'SELECT id FROM leads_cotacoes WHERE thread_id = $1';
                     const resVerifica = await pool.query(queryVerifica, [threadId]);
 
@@ -158,32 +181,31 @@ app.post('/api/chat', async (req, res) => {
                                 valor_nf = COALESCE($9, valor_nf),
                                 data_atualizacao = CURRENT_TIMESTAMP
                             WHERE thread_id = $10
-                        `, [args.cnpj, args.empresa, args.rota_origem, args.rota_destino, args.nome_contato, args.telefone, args.peso_carga, args.volume_carga, args.valor_nf, threadId]);
+                        `, valoresBD);
                     } else {
                         await pool.query(`
                             INSERT INTO leads_cotacoes
                             (cnpj, empresa, rota_origem, rota_destino, nome_contato, telefone, peso_carga, volume_carga, valor_nf, thread_id)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        `, [args.cnpj, args.empresa, args.rota_origem, args.rota_destino, args.nome_contato, args.telefone, args.peso_carga, args.volume_carga, args.valor_nf, threadId]);
+                        `, valoresBD);
+                    }
+                    
+                    // DISPARO WHATSAPP VIA CHAT (Apenas quando a Isa apertar o botão de finalizar/transferir)
+                    if (args.cotacao_finalizada) {
+                        const origem = args.rota_origem || "Não informada";
+                        const destino = args.rota_destino || "Não informada";
+                        const mercadoria = `Peso/Vol: ${args.peso_carga || ''} ${args.volume_carga || ''}`.trim();
+                        const demandaChat = `[ATENDIMENTO IA] Rota: ${origem} -> ${destino} | ${mercadoria}`;
+
+                        await enviarAlertaWhatsApp(
+                            args.nome_contato || "Não informado", 
+                            args.empresa || "Não informada", 
+                            args.telefone || "Não informado", 
+                            demandaChat
+                        );
                     }
                 }
 
-                // NOVO: DISPARO DO WHATSAPP VIA CHAT (Apenas quando a Isa finalizar)
-                if (podeSalvar && args.cotacao_finalizada) {
-                    const origem = args.rota_origem || "Não informada";
-                    const destino = args.rota_destino || "Não informada";
-                    const mercadoria = `Peso/Vol: ${args.peso_carga || ''} ${args.volume_carga || ''}`.trim();
-                    const demandaChat = `[ATENDIMENTO IA] Rota: ${origem} -> ${destino} | ${mercadoria}`;
-
-                    await enviarAlertaWhatsApp(
-                        args.nome_contato || "Não informado", 
-                        args.empresa || "Não informada", 
-                        args.telefone || "Não informado", 
-                        demandaChat
-                    );
-                }
-
-                
                 const functionResponseResult = await chat.sendMessage([{
                     functionResponse: {
                         name: "salvar_dados_crm",
@@ -221,7 +243,6 @@ app.post('/api/formulario', async (req, res) => {
     const threadId = `form_${Date.now()}`;
 
     try {
-        // 1. TRAVA DO E-MAIL
         if (!isEmailCorporativo(email)) {
             return res.status(400).json({
                 success: false,
@@ -229,7 +250,6 @@ app.post('/api/formulario', async (req, res) => {
             });
         }
 
-        // 2. TRAVA DO TELEFONE (DDD OBRIGATÓRIO)
         if (!validarTelefoneBR(telefone)) {
             return res.status(400).json({
                 success: false,
@@ -237,11 +257,9 @@ app.post('/api/formulario', async (req, res) => {
             });
         }
 
-        // --- TRAVA DE SEGURANÇA B2B IMPLACÁVEL ---
         let cnpjLimpo = cnpj ? cnpj.replace(/\D/g, '') : '';
         const validacao = await consultarCNPJ(cnpjLimpo);
         
-        // Bloqueia se for falso, incompleto ou inexistente
         if (!validacao.valido) {
             return res.status(400).json({
                 success: false,
@@ -274,8 +292,8 @@ app.post('/api/formulario', async (req, res) => {
 
         console.log(`🔔 NOTIFICAÇÃO: Novo lead via formulário! Empresa: ${empresaReal} | Contato: ${nome}`);
 
-        // DISPARO DO GATILHO DO WHATSAPP AQUI!
-await enviarAlertaWhatsApp(nome, empresaReal, telefone, necessidade);
+        // DISPARO DO GATILHO DO WHATSAPP DO FORMULÁRIO
+        await enviarAlertaWhatsApp(nome, empresaReal, telefone, necessidade);
         
         res.status(200).json({ success: true, message: 'Formulário enviado com sucesso!' });
 
@@ -284,22 +302,6 @@ await enviarAlertaWhatsApp(nome, empresaReal, telefone, necessidade);
         res.status(500).json({ success: false, message: 'Ocorreu um erro interno ao enviar o formulário.' });
     }
 });
-
-// --- FUNÇÃO DE DISPARO WHATSAPP (ISOLADA) ---
-async function enviarAlertaWhatsApp(nome, empresa, telefone, necessidade) {
-    const numero = "5511954937948";
-    const apiKey = "8836652";
-    
-    const texto = `🚨 *NOVO LEAD BM ROAD!*%0A%0A*Empresa:* ${empresa}%0A*Contato:* ${nome}%0A*Telefone:* ${telefone}%0A*Demanda:* ${necessidade}%0A%0A🔥 _Acesse o banco para ver os detalhes!_`;
-    const url = `https://api.callmebot.com/whatsapp.php?phone=${numero}&text=${texto}&apikey=${apiKey}`;
-
-    try {
-        await fetch(url);
-        console.log("✅ Alerta de WhatsApp disparado com sucesso!");
-    } catch (error) {
-        console.error("🚨 Erro na requisição do WhatsApp:", error);
-    }
-}
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
 
