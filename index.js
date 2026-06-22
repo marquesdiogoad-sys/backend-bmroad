@@ -256,6 +256,9 @@ app.post('/api/formulario', async (req, res) => {
 
         console.log(`🔔 NOTIFICAÇÃO: Novo lead via formulário! Empresa: ${empresaReal} | Contato: ${nome}`);
 
+        // DISPARO DO GATILHO DO WHATSAPP AQUI!
+await enviarAlertaWhatsApp(nome, empresaReal, telefone, necessidade);
+        
         res.status(200).json({ success: true, message: 'Formulário enviado com sucesso!' });
 
     } catch (erro) {
@@ -263,6 +266,22 @@ app.post('/api/formulario', async (req, res) => {
         res.status(500).json({ success: false, message: 'Ocorreu um erro interno ao enviar o formulário.' });
     }
 });
+
+// --- FUNÇÃO DE DISPARO WHATSAPP (ISOLADA) ---
+async function enviarAlertaWhatsApp(nome, empresa, telefone, necessidade) {
+    const numero = "5511954937948";
+    const apiKey = "8836652";
+    
+    const texto = `🚨 *NOVO LEAD BM ROAD!*%0A%0A*Empresa:* ${empresa}%0A*Contato:* ${nome}%0A*Telefone:* ${telefone}%0A*Demanda:* ${necessidade}%0A%0A🔥 _Acesse o banco para ver os detalhes!_`;
+    const url = `https://api.callmebot.com/whatsapp.php?phone=${numero}&text=${texto}&apikey=${apiKey}`;
+
+    try {
+        await fetch(url);
+        console.log("✅ Alerta de WhatsApp disparado com sucesso!");
+    } catch (error) {
+        console.error("🚨 Erro na requisição do WhatsApp:", error);
+    }
+}
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
 
