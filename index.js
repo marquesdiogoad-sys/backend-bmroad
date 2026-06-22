@@ -38,36 +38,61 @@ const ferramentas = [{
 function validarTelefoneBR(telefone) {
     if (!telefone) return true;
     const numeros = telefone.replace(/\D/g, '');
-
     if (numeros.length !== 10 && numeros.length !== 11) return false;
-
     const ddd = parseInt(numeros.substring(0, 2));
     if (ddd < 11 || ddd > 99) return false;
-
     if (numeros.length === 11 && numeros.charAt(2) !== '9') return false;
-
     const numeroSemDDD = numeros.substring(2);
     const todosIguais = /^(\d)\1+$/.test(numeroSemDDD);
     if (todosIguais) return false;
-
     if (numeroSemDDD === '123456789' || numeroSemDDD === '12345678') return false;
     return true;
 }
 
+// NOVO MOTOR V8: Tripla Validação de CNPJ (Implacável mas Inteligente)
 async function consultarCNPJ(cnpjOriginal) {
-    if (!cnpjOriginal) return { valido: true };
+    if (!cnpjOriginal) return { valido: false, erro: "CNPJ é obrigatório." };
     const cnpjNumeros = cnpjOriginal.replace(/\D/g, '');
-    if (cnpjNumeros.length !== 14) return { valido: false, erro: "O CNPJ precisa ter 14 números." };
+    if (cnpjNumeros.length !== 14) return { valido: false, erro: "O CNPJ precisa ter exatamente 14 números." };
 
+    // Tentativa 1: CNPJ.ws (Melhor compatibilidade com servidores VPS)
     try {
-        const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjNumeros}`);
-        if (!response.ok) return { valido: false, erro: "CNPJ não encontrado na Receita Federal." };
-        const data = await response.json();
-        return { valido: true, razao_social: data.razao_social };
-    } catch (erro) {
-        console.error("Erro na BrasilAPI:", erro);
-        return { valido: true }; // Se a API cair, deixamos passar para não bloquear a venda
-    }
+        const res1 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjNumeros}`);
+        if (res1.ok) {
+            const data1 = await res1.json();
+            return { valido: true, razao_social: data1.razao_social };
+        }
+        if (res1.status === 404 || res1.status === 400) {
+            return { valido: false, erro: "CNPJ não existe na base da Receita." };
+        }
+    } catch (e) { console.log("Tentativa 1 falhou. Tentando próxima..."); }
+
+    // Tentativa 2: ReceitaWS
+    try {
+        const res2 = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpjNumeros}`);
+        if (res2.ok) {
+            const data2 = await res2.json();
+            if (data2.status === "ERROR") return { valido: false, erro: "CNPJ rejeitado pela Receita." };
+            return { valido: true, razao_social: data2.nome };
+        }
+    } catch (e) { console.log("Tentativa 2 falhou. Tentando próxima..."); }
+
+    // Tentativa 3: BrasilAPI
+    try {
+        const res3 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjNumeros}`);
+        if (res3.ok) {
+            const data3 = await res3.json();
+            return { valido: true, razao_social: data3.razao_social };
+        }
+        if (res3.status === 404 || res3.status === 400) {
+             return { valido: false, erro: "CNPJ inválido ou não encontrado." };
+        }
+    } catch (e) { console.log("Tentativa 3 falhou."); }
+
+    // Se o CNPJ for falso de verdade, as APIs retornam 404 e caem nos ifs acima.
+    // Se o código chegou aqui, as 3 APIs bloquearam nosso servidor momentaneamente.
+    // Para mantermos a trava RÍGIDA de que você não abre mão, não deixamos passar de jeito nenhum.
+    return { valido: false, erro: "Instabilidade na verificação com a Receita. Confirme o CNPJ ou tente em instantes." };
 }
 
 // --- ROTA PRINCIPAL DO CHAT ---
@@ -185,33 +210,22 @@ app.post('/api/formulario', async (req, res) => {
             });
         }
 
-       // 2. TRAVA DE SEGURANÇA B2B: CNPJ OBRIGATÓRIO E VÁLIDO
+        // --- TRAVA DE SEGURANÇA B2B IMPLACÁVEL ---
         let cnpjLimpo = cnpj ? cnpj.replace(/\D/g, '') : '';
-
-        // Bloqueia se não tiver exatamente 14 números (evita testes preguiçosos)
-        if (cnpjLimpo.length !== 14) {
-            return res.status(400).json({
-                success: false,
-                message: 'CNPJ inválido. Por favor, digite os 14 números corretamente.'
-            });
-        }
-
-        // Vai à Receita Federal conferir se a empresa realmente existe
         const validacao = await consultarCNPJ(cnpjLimpo);
         
-        if (!validacao.valido || !validacao.razao_social) {
+        // Bloqueia se for falso, incompleto ou inexistente
+        if (!validacao.valido) {
             return res.status(400).json({
                 success: false,
-                message: 'CNPJ não encontrado na Receita Federal. Verifique os dados digitados.'
+                message: validacao.erro || 'CNPJ não encontrado na Receita Federal.'
             });
         }
 
-        // Se passou por todas as travas, guardamos o nome oficial da empresa
         let empresaReal = validacao.razao_social;
 
         const observacoes = `Mensagem original do cliente: ${mensagem}`;
 
-        // Inserção corrigida com 'A definir' para evitar o erro NOT NULL do banco
         await pool.query(`
             INSERT INTO leads_cotacoes
             (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status, thread_id, rota_origem, rota_destino)
@@ -227,8 +241,8 @@ app.post('/api/formulario', async (req, res) => {
             'Formulario Site',
             'Novo Lead',
             threadId,
-            'A definir', // Resolve o erro de rota_origem vazia
-            'A definir'  // Resolve o erro de rota_destino vazia
+            'A definir',
+            'A definir'
         ]);
 
         console.log(`🔔 NOTIFICAÇÃO: Novo lead via formulário! Empresa: ${empresaReal} | Contato: ${nome}`);
