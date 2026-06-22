@@ -319,6 +319,22 @@ app.post('/api/formulario', async (req, res) => {
     }
 });
 
+
+// --- ROTA DO DASHBOARD CRM (TAILADMIN) ---
+app.get('/api/leads', async (req, res) => {
+    try {
+        // Puxa todos os leads do PostgreSQL, do mais recente para o mais antigo
+        const result = await pool.query('SELECT * FROM leads_cotacoes ORDER BY data_atualizacao DESC');
+        res.json(result.rows);
+    } catch (erro) {
+        console.error("🚨 Erro ao buscar leads:", erro);
+        res.status(500).json({ error: 'Erro ao conectar com o banco de dados.' });
+    }
+});
+
+
+
+
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
 
 const PORT = process.env.PORT || 3000;
