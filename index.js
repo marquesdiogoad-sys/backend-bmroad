@@ -148,25 +148,12 @@ app.post('/api/chat', async (req, res) => {
                     }
                 }
 
-                if (podeSalvar) {
-                    // BLINDAGEM: Converte propriedades que a IA não descobriu (undefined) em null para o banco de dados
-                    const valoresBD = [
-                        args.cnpj ?? null,
-                        args.empresa ?? null,
-                        args.rota_origem ?? null,
-                        args.rota_destino ?? null,
-                        args.nome_contato ?? null,
-                        args.telefone ?? null,
-                        args.peso_carga ?? null,
-                        args.volume_carga ?? null,
-                        args.valor_nf ?? null,
-                        threadId
-                    ];
-
+               if (podeSalvar) {
                     const queryVerifica = 'SELECT id FROM leads_cotacoes WHERE thread_id = $1';
                     const resVerifica = await pool.query(queryVerifica, [threadId]);
 
                     if (resVerifica.rows.length > 0) {
+                        // UPDATE: Usamos null para as variáveis vazias, para o COALESCE preservar o que já foi salvo
                         await pool.query(`
                             UPDATE leads_cotacoes
                             SET
@@ -181,14 +168,53 @@ app.post('/api/chat', async (req, res) => {
                                 valor_nf = COALESCE($9, valor_nf),
                                 data_atualizacao = CURRENT_TIMESTAMP
                             WHERE thread_id = $10
-                        `, valoresBD);
+                        `, [
+                            args.cnpj ?? null,
+                            args.empresa ?? null,
+                            args.rota_origem ?? null,
+                            args.rota_destino ?? null,
+                            args.nome_contato ?? null,
+                            args.telefone ?? null,
+                            args.peso_carga ?? null,
+                            args.volume_carga ?? null,
+                            args.valor_nf ?? null,
+                            threadId
+                        ]);
                     } else {
+                        // INSERT (NOVO LEAD): Criamos com "textos provisórios" para não quebrar a regra NOT NULL do PostgreSQL
                         await pool.query(`
                             INSERT INTO leads_cotacoes
                             (cnpj, empresa, rota_origem, rota_destino, nome_contato, telefone, peso_carga, volume_carga, valor_nf, thread_id)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        `, valoresBD);
+                        `, [
+                            args.cnpj ?? null,
+                            args.empresa ?? 'Não informada',
+                            args.rota_origem ?? 'A definir',
+                            args.rota_destino ?? 'A definir',
+                            args.nome_contato ?? 'Em atendimento...', // Resolve o Erro do Banco!
+                            args.telefone ?? 'Aguardando...',         // Resolve o Erro do Banco!
+                            args.peso_carga ?? null,
+                            args.volume_carga ?? null,
+                            args.valor_nf ?? null,
+                            threadId
+                        ]);
                     }
+                    
+                    // DISPARO WHATSAPP VIA CHAT (Apenas quando a Isa apertar o botão de finalizar/transferir)
+                    if (args.cotacao_finalizada) {
+                        const origem = args.rota_origem || "Não informada";
+                        const destino = args.rota_destino || "Não informada";
+                        const mercadoria = `Peso/Vol: ${args.peso_carga || ''} ${args.volume_carga || ''}`.trim();
+                        const demandaChat = `[ATENDIMENTO IA] Rota: ${origem} -> ${destino} | ${mercadoria}`;
+
+                        await enviarAlertaWhatsApp(
+                            args.nome_contato || "Não informado", 
+                            args.empresa || "Não informada", 
+                            args.telefone || "Não informado", 
+                            demandaChat
+                        );
+                    }
+                }
                     
                     // DISPARO WHATSAPP VIA CHAT (Apenas quando a Isa apertar o botão de finalizar/transferir)
                     if (args.cotacao_finalizada) {
