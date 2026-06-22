@@ -185,30 +185,39 @@ function isEmailCorporativo(email) {
 
 // --- ROTA DO FORMULÁRIO ESTÁTICO DO SITE ---
 app.post('/api/formulario', async (req, res) => {
-    const { nome, email, telefone, cnpj, necessidade, mensagem } = req.body;
-    const threadId = `form_${Date.now()}`; // Identificador único da cotação
-
     try {
-        // 1. VALIDAÇÃO DE E-MAIL CORPORATIVO
+        console.log("1. Recebi request:", req.body);
+        const { nome, email, telefone, cnpj, necessidade, mensagem } = req.body;
+
         if (!isEmailCorporativo(email)) {
-            // Se for e-mail gratuito, bloqueia e avisa o Frontend
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Por favor, utilize um e-mail corporativo válido para solicitar a cotação.' 
-            });
+            return res.status(400).json({ message: 'Use um e-mail corporativo.' });
         }
 
-        // 2. BUSCA INTELIGENTE DE CNPJ (Receita Federal)
-        let empresaReal = 'Não informada';
-        let cnpjLimpo = cnpj ? cnpj.replace(/\D/g, '') : null;
-
-        if (cnpjLimpo && cnpjLimpo.length === 14) {
-            // Reaproveitamos a função consultarCNPJ que já criamos para a Isa!
-            const validacao = await consultarCNPJ(cnpjLimpo); 
-            if (validacao.valido && validacao.razao_social) {
-                empresaReal = validacao.razao_social; // Auto-preenche com o nome oficial!
-            }
+        // Inspeção do CNPJ
+        let empresaReal = 'N/A';
+        if (cnpj) {
+            console.log("2. Tentando buscar CNPJ:", cnpj);
+            const validacao = await consultarCNPJ(cnpj.replace(/\D/g, ''));
+            empresaReal = validacao ? validacao.razao_social : 'Não encontrada';
+            console.log("3. Resultado CNPJ:", empresaReal);
         }
+
+        // Inspeção do Banco
+        console.log("4. Tentando inserir no PostgreSQL...");
+        await pool.query(`
+            INSERT INTO leads_cotacoes 
+            (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [nome, empresaReal, cnpj, telefone, email, necessidade, mensagem, 'Formulario Site', 'Novo Lead']);
+        
+        console.log("5. Inserção finalizada!");
+        res.status(200).json({ success: true });
+
+    } catch (error) {
+        console.error("ERRO DETALHADO NO BACKEND:", error.stack);
+        res.status(500).json({ message: 'Erro no servidor: ' + error.message });
+    }
+});
 
         // 3. SALVAR NO POSTGRESQL (Agora com a coluna "email" dedicada)
         const observacoes = `Mensagem original do cliente: ${mensagem}`;
