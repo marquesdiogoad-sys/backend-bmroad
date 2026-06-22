@@ -203,10 +203,19 @@ app.post('/api/formulario', async (req, res) => {
     const threadId = `form_${Date.now()}`;
 
     try {
+        // 1. TRAVA DO E-MAIL
         if (!isEmailCorporativo(email)) {
             return res.status(400).json({
                 success: false,
                 message: 'Por favor, utilize um e-mail corporativo válido para solicitar o contato.'
+            });
+        }
+
+        // 2. TRAVA DO TELEFONE (DDD OBRIGATÓRIO)
+        if (!validarTelefoneBR(telefone)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Telefone inválido. Por favor, digite o número completo com o DDD.'
             });
         }
 
