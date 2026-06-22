@@ -200,19 +200,25 @@ app.post('/api/chat', async (req, res) => {
                         ]);
                     }
 
-                    // DISPARO WHATSAPP VIA CHAT
+                    // A MÁGICA ACONTECE AQUI: Lemos a Base de Dados antes de mandar o WhatsApp!
                     if (args.cotacao_finalizada) {
-                        const origem = args.rota_origem || "Não informada";
-                        const destino = args.rota_destino || "Não informada";
-                        const mercadoria = `Peso/Vol: ${args.peso_carga || ''} ${args.volume_carga || ''}`.trim();
-                        const demandaChat = `[ATENDIMENTO IA] Rota: ${origem} -> ${destino} | ${mercadoria}`;
+                        const resLeadCompleto = await pool.query('SELECT * FROM leads_cotacoes WHERE thread_id = $1', [threadId]);
+                        
+                        if (resLeadCompleto.rows.length > 0) {
+                            const lead = resLeadCompleto.rows[0];
+                            
+                            const origem = lead.rota_origem || "Não informada";
+                            const destino = lead.rota_destino || "Não informada";
+                            const mercadoria = `Peso/Vol: ${lead.peso_carga || ''} ${lead.volume_carga || ''}`.trim();
+                            const demandaChat = `[ATENDIMENTO IA] Rota: ${origem} -> ${destino} | ${mercadoria}`;
 
-                        await enviarAlertaWhatsApp(
-                            args.nome_contato || "Não informado", 
-                            args.empresa || "Não informada", 
-                            args.telefone || "Não informado", 
-                            demandaChat
-                        );
+                            await enviarAlertaWhatsApp(
+                                lead.nome_contato || "Não informado", 
+                                lead.empresa || "Não informada", 
+                                lead.telefone || "Não informado", 
+                                demandaChat
+                            );
+                        }
                     }
                 }
 
