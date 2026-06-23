@@ -514,6 +514,27 @@ app.get('/api/contatos', async (req, res) => {
     }
 });
 
+// ==========================================
+// ROTA DE ATUALIZAÇÃO DO STATUS COMERCIAL (CRM)
+// ==========================================
+app.put('/api/oportunidades/:id/status', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+
+    const opId = req.params.id;
+    const { status_comercial } = req.body;
+
+    try {
+        await pool.query(
+            'UPDATE oportunidades SET status_comercial = $1, data_atualizacao = CURRENT_TIMESTAMP WHERE id = $2',
+            [status_comercial, opId]
+        );
+        res.json({ success: true, message: 'Status atualizado com sucesso!' });
+    } catch (erro) {
+        console.error("🚨 Erro ao atualizar status da oportunidade:", erro);
+        res.status(500).json({ error: 'Erro interno ao atualizar.' });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
