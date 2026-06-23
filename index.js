@@ -303,28 +303,25 @@ app.post('/api/formulario', async (req, res) => {
 });
 
 // ==========================================
-// ROTA DE AUTENTICAÇÃO (LOGIN DO CRM)
+// ROTA DE AUTENTICAÇÃO (Mapeada com o Easypanel)
 // ==========================================
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     
-    // Lista de e-mails corporativos autorizados a entrar no CRM
-    const emailsAutorizados = [
-        'comercial@bmroadtransportes.com.br',
-        'operacional@bmroadtransportes.com.br',
-        'vendas1@bmroadtransportes.com.br'
-    ];
+    // O código lê dinamicamente as chaves exatas que você salvou no Easypanel
+    const senhasUsuarios = {
+        'comercial@bmroadtransportes.com.br': process.env.PASS_COMERCIAL,
+        'operacional@bmroadtransportes.com.br': process.env.PASS_OPERACIONAL,
+        'vendas1@bmroadtransportes.com.br': process.env.PASS_VENDAS1
+    };
 
-    // Lê a senha mestra do Easypanel que você configurou no Passo 1
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
-    if (!ADMIN_PASSWORD) {
-        return res.status(500).json({ success: false, message: 'Erro no servidor: Senha do CRM não configurada no Easypanel.' });
-    }
-
-    if (emailsAutorizados.includes(email) && password === ADMIN_PASSWORD) {
+    // 1. Verifica se o e-mail digitado está mapeado no sistema
+    // 2. Verifica se a senha digitada é exatamente igual à do Easypanel
+    if (senhasUsuarios[email] && senhasUsuarios[email] === password) {
+        // Sucesso: Libera o token para o painel do CRM abrir
         res.json({ success: true, token: 'bmroad_auth_token_secure_xyz' });
     } else {
+        // Falha: Credenciais inválidas
         res.status(401).json({ success: false, message: 'E-mail corporativo ou senha incorretos.' });
     }
 });
