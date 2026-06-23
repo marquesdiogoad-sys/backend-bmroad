@@ -148,7 +148,6 @@ app.post('/api/chat', async (req, res) => {
                 }
 
                 if (podeSalvar) {
-                    // BLINDAGEM: Converte propriedades que a IA não descobriu (undefined) em null para o banco de dados
                     const valoresBD = [
                         args.cnpj ?? null,
                         args.empresa ?? null,
@@ -200,7 +199,6 @@ app.post('/api/chat', async (req, res) => {
                         ]);
                     }
 
-                    // A MÁGICA ACONTECE AQUI: Lemos a Base de Dados antes de mandar o WhatsApp!
                     if (args.cotacao_finalizada) {
                         const resLeadCompleto = await pool.query('SELECT * FROM leads_cotacoes WHERE thread_id = $1', [threadId]);
                         
@@ -241,7 +239,6 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// --- FUNÇÃO AUXILIAR: VALIDAÇÃO DE E-MAIL CORPORATIVO ---
 function isEmailCorporativo(email) {
     const provedoresGratuitos = [
         'gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com',
@@ -253,7 +250,6 @@ function isEmailCorporativo(email) {
     return !provedoresGratuitos.includes(dominio.toLowerCase());
 }
 
-// --- ROTA DO FORMULÁRIO ESTÁTICO DO SITE ---
 app.post('/api/formulario', async (req, res) => {
     const { nome, email, telefone, cnpj, necessidade, mensagem } = req.body;
     const threadId = `form_${Date.now()}`;
@@ -284,7 +280,6 @@ app.post('/api/formulario', async (req, res) => {
         }
 
         let empresaReal = validacao.razao_social;
-
         const observacoes = `Mensagem original do cliente: ${mensagem}`;
 
         await pool.query(`
@@ -292,23 +287,11 @@ app.post('/api/formulario', async (req, res) => {
             (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status, thread_id, rota_origem, rota_destino)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         `, [
-            nome,
-            empresaReal,
-            cnpjLimpo,
-            telefone,
-            email,
-            necessidade,
-            observacoes,
-            'Formulario Site',
-            'Novo Lead',
-            threadId,
-            'A definir',
-            'A definir'
+            nome, empresaReal, cnpjLimpo, telefone, email, necessidade, observacoes,
+            'Formulario Site', 'Novo Lead', threadId, 'A definir', 'A definir'
         ]);
 
         console.log(`🔔 NOTIFICAÇÃO: Novo lead via formulário! Empresa: ${empresaReal} | Contato: ${nome}`);
-
-        // DISPARO DO GATILHO DO WHATSAPP DO FORMULÁRIO
         await enviarAlertaWhatsApp(nome, empresaReal, telefone, necessidade);
         
         res.status(200).json({ success: true, message: 'Formulário enviado com sucesso!' });
@@ -319,11 +302,43 @@ app.post('/api/formulario', async (req, res) => {
     }
 });
 
+// ==========================================
+// ROTA DE AUTENTICAÇÃO (LOGIN DO CRM)
+// ==========================================
+app.post('/api/login', (req, res) => {
+    const { email, password } = req.body;
+    
+    // Lista de e-mails corporativos autorizados a entrar no CRM
+    const emailsAutorizados = [
+        'comercial@bmroadtransportes.com.br',
+        'operacional@bmroadtransportes.com.br',
+        'vendas1@bmroadtransportes.com.br'
+    ];
 
-// --- ROTA DO DASHBOARD CRM (TAILADMIN) ---
+    // Lê a senha mestra do Easypanel que você configurou no Passo 1
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+    if (!ADMIN_PASSWORD) {
+        return res.status(500).json({ success: false, message: 'Erro no servidor: Senha do CRM não configurada no Easypanel.' });
+    }
+
+    if (emailsAutorizados.includes(email) && password === ADMIN_PASSWORD) {
+        res.json({ success: true, token: 'bmroad_auth_token_secure_xyz' });
+    } else {
+        res.status(401).json({ success: false, message: 'E-mail corporativo ou senha incorretos.' });
+    }
+});
+
+// ==========================================
+// ROTA DO DASHBOARD CRM (PROTEGIDA)
+// ==========================================
 app.get('/api/leads', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') {
+        return res.status(401).json({ error: 'Acesso Negado. Faça o login.' });
+    }
+
     try {
-        // Puxa todos os leads do PostgreSQL, do mais recente para o mais antigo
         const result = await pool.query('SELECT * FROM leads_cotacoes ORDER BY data_atualizacao DESC');
         res.json(result.rows);
     } catch (erro) {
@@ -331,9 +346,6 @@ app.get('/api/leads', async (req, res) => {
         res.status(500).json({ error: 'Erro ao conectar com o banco de dados.' });
     }
 });
-
-
-
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
 
