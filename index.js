@@ -536,5 +536,55 @@ app.put('/api/oportunidades/:id/status', async (req, res) => {
     }
 });
 
+// ==========================================
+// ROTAS DE EDIÇÃO (ENRIQUECIMENTO DE DADOS)
+// ==========================================
+
+// Edição de Empresa
+app.put('/api/empresas/:id', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+    
+    const { razao_social, cnpj, segmento, porte, endereco, site } = req.body;
+    try {
+        await pool.query(
+            `UPDATE empresas SET razao_social = COALESCE($1, razao_social), cnpj = COALESCE($2, cnpj), segmento = COALESCE($3, segmento), porte = COALESCE($4, porte), endereco = COALESCE($5, endereco), site = COALESCE($6, site), data_atualizacao = CURRENT_TIMESTAMP WHERE id = $7`,
+            [razao_social, cnpj, segmento, porte, endereco, site, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (erro) { res.status(500).json({ error: 'Erro ao atualizar empresa.' }); }
+});
+
+// Edição de Contato
+app.put('/api/contatos/:id', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+    
+    const { nome, telefone, email, cargo } = req.body;
+    try {
+        await pool.query(
+            `UPDATE contatos SET nome = COALESCE($1, nome), telefone = COALESCE($2, telefone), email = COALESCE($3, email), cargo = COALESCE($4, cargo), data_atualizacao = CURRENT_TIMESTAMP WHERE id = $5`,
+            [nome, telefone, email, cargo, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (erro) { res.status(500).json({ error: 'Erro ao atualizar contato.' }); }
+});
+
+// Edição de Oportunidade
+app.put('/api/oportunidades/:id/dados', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+    
+    const { rota_origem, rota_destino, peso_carga, volume_carga, valor_nf } = req.body;
+    try {
+        const valorTratado = valor_nf === '' ? null : valor_nf;
+        await pool.query(
+            `UPDATE oportunidades SET rota_origem = COALESCE($1, rota_origem), rota_destino = COALESCE($2, rota_destino), peso_carga = COALESCE($3, peso_carga), volume_carga = COALESCE($4, volume_carga), valor_nf = COALESCE($5, valor_nf), data_atualizacao = CURRENT_TIMESTAMP WHERE id = $6`,
+            [rota_origem, rota_destino, peso_carga, volume_carga, valorTratado, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (erro) { res.status(500).json({ error: 'Erro ao atualizar oportunidade.' }); }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
