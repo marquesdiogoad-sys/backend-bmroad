@@ -346,5 +346,138 @@ app.get('/api/leads', async (req, res) => {
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
 
+
+// =================================================================
+// ENDPOINT DE GESTÃO LOGÍSTICA: EFETIVAR LEAD COMO CONTA PERMANENTE
+// =================================================================
+app.post('/api/leads/:id/efetivar', async (req, res) => {
+    const leadId = req.params.id;
+    const { tipo_oportunidade } = req.body; // 'Carga Fracionada', 'Armazenagem Hub SP', 'Carga Dedicada', 'Outros'
+
+    // Validação básica do tipo de serviço logístico
+    const tiposValidos = ['Carga Fracionada', 'Armazenagem Hub SP', 'Carga Dedicada', 'Outros'];
+    const servicoDefinido = tiposValidos.includes(tipo_oportunidade) ? tipo_oportunidade : 'Outros';
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Busca os dados brutos captados originalmente pela Isa ou formulário
+        const resLead = await client.query('SELECT * FROM leads_cotacoes WHERE id = $1', [leadId]);
+        if (resLead.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, message: 'Lead bruto não encontrado.' });
+        }
+        const lead = resLead.rows[0];
+
+        // Se o lead não tiver CNPJ, usamos um fallback seguro baseado no nome limpo da empresa
+        const cnpjIdentificador = lead.cnpj ? lead.cnpj.replace(/\D/g, '') : lead.empresa.trim().toLowerCase();
+
+        let empresaId;
+        let contatoId;
+
+        // 2. MECANISMO DE DEDUPLICAÇÃO DE EMPRESA: Verifica se o cliente corporativo já existe
+        const resEmpresaExistente = await client.query('SELECT id FROM empresas WHERE cnpj = $1', [cnpjIdentificador]);
+        
+        if (resEmpresaExistente.rows.length > 0) {
+            // Conta já mapeada no ecossistema
+            empresaId = resEmpresaExistente.rows[0].id;
+        } else {
+            // Indústria Nova: Realiza a inserção definitiva no ecossistema
+            const queryNovaEmpresa = `
+                INSERT INTO empresas (razao_social, nome_fantasia, cnpj, status)
+                VALUES ($1, $2, $3, 'Ativo') RETURNING id
+            `;
+            const resNovaEmpresa = await client.query(queryNovaEmpresa, [lead.empresa, lead.empresa, cnpjIdentificador]);
+            empresaId = resNovaEmpresa.rows[0].id;
+        }
+
+        // 3. MECANISMO DE DEDUPLICAÇÃO DE CONTATO: Evita inserir a mesma pessoa repetidamente sob a mesma empresa
+        const resContatoExistente = await client.query(
+            'SELECT id FROM contatos WHERE empresa_id = $1 AND (telefone = $2 OR email = $3)',
+            [empresaId, lead.telefone, lead.email]
+        );
+
+        if (resContatoExistente.rows.length > 0) {
+            contatoId = resContatoExistente.rows[0].id;
+        } else {
+            // Conta os contatos vinculados para validar a regra de múltiplos contatos
+            const resContagem = await client.query('SELECT COUNT(id) as total FROM contatos WHERE empresa_id = $1', [empresaId]);
+            const totalContatos = parseInt(resContagem.rows[0].total);
+
+            if (totalContatos >= 3) {
+                console.log(`⚠️ ALERTA: Empresa ID ${empresaId} já possui ${totalContatos} contatos. Associando ao contato principal existente.`);
+                const resPrimeiroContato = await client.query('SELECT id FROM contatos WHERE empresa_id = $1 ORDER BY id ASC LIMIT 1', [empresaId]);
+                contatoId = resPrimeiroContato.rows[0].id;
+            } else {
+                // Insere novo contato operacional (Contato 1, 2 ou 3)
+                const queryNovoContato = `
+                    INSERT INTO contatos (empresa_id, nome, telefone, email, whatsapp)
+                    VALUES ($1, $2, $3, $4, $5) RETURNING id
+                `;
+                const resNovoContato = await client.query(queryNovoContato, [empresaId, lead.nome_contato, lead.telefone, lead.email, lead.telefone]);
+                contatoId = resNovoContato.rows[0].id;
+            }
+        }
+
+        // 4. CRIAÇÃO DA OPORTUNIDADE LOGÍSTICA ESPECÍFICA
+        const queryOportunidade = `
+            INSERT INTO oportunidades (empresa_id, contato_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf)
+            VALUES ($1, $2, $3, 'Em Cotação', $4, $5, $6, $7, $8)
+        `;
+        await client.query(queryOportunidade, [empresaId, contatoId, servicoDefinido, lead.rota_origem, lead.rota_destino, lead.peso_carga, lead.volume_carga, lead.valor_nf]);
+
+        // 5. ATUALIZAÇÃO DO STATUS DO LEAD BRUTO ORIGINAL
+        // Salvamos as chaves de relacionamento no lead bruto para auditoria completa
+        await client.query(
+            'UPDATE leads_cotacoes SET status = $1, empresa_id = $2, contato_id = $3, data_atualizacao = CURRENT_TIMESTAMP WHERE id = $4',
+            ['Efetivado / Qualificado', empresaId, contatoId, leadId]
+        );
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Empresa integrada e oportunidade gerada com sucesso!', empresa_id: empresaId });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('🚨 Erro crítico no fluxo de conversão relacional:', error);
+        res.status(500).json({ success: false, message: 'Falha interna ao processar a efetivação relacional.' });
+    } finally {
+        client.release();
+    }
+});
+
+// =================================================================
+// ENDPOINT DE VISÃO 360: DADOS COMPLETOS DA EMPRESA, CONTATOS E TRACKING
+// =================================================================
+app.get('/api/empresas/:id/360', async (req, res) => {
+    const empresaId = req.params.id;
+
+    try {
+        // 1. Puxa os dados cadastrais da empresa
+        const resEmpresa = await pool.query('SELECT * FROM empresas WHERE id = $1', [empresaId]);
+        if (resEmpresa.rows.length === 0) {
+            return res.status(404).json({ error: 'Empresa não encontrada no ecossistema.' });
+        }
+
+        // 2. Puxa todos os contatos vinculados a ela (Até 3)
+        const resContatos = await pool.query('SELECT * FROM contatos WHERE empresa_id = $1 ORDER BY id ASC LIMIT 3', [empresaId]);
+
+        // 3. Puxa todas as oportunidades e o pipeline de rastreamento operacional/faturamento
+        const resOportunidades = await pool.query('SELECT * FROM oportunidades WHERE empresa_id = $1 ORDER BY data_atualizacao DESC', [empresaId]);
+
+        res.json({
+            empresa: resEmpresa.rows[0],
+            contatos: resContatos.rows,
+            oportunidades: resOportunidades.rows
+        });
+
+    } catch (error) {
+        console.error('🚨 Erro ao buscar visão 360 da conta:', error);
+        res.status(500).json({ error: 'Erro ao conectar com a base de dados.' });
+    }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
