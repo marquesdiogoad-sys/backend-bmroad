@@ -479,5 +479,41 @@ app.get('/api/empresas/:id/360', async (req, res) => {
 });
 
 
+// ==========================================
+// ROTAS DE GESTÃO: LISTAGEM DE EMPRESAS E CONTATOS
+// ==========================================
+app.get('/api/empresas', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+    
+    try {
+        const result = await pool.query('SELECT * FROM empresas ORDER BY data_criacao DESC');
+        res.json(result.rows);
+    } catch (erro) {
+        console.error("🚨 Erro ao buscar empresas:", erro);
+        res.status(500).json({ error: 'Erro ao conectar com o banco de dados.' });
+    }
+});
+
+app.get('/api/contatos', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+    
+    try {
+        // Puxa os contatos e já traz o nome da empresa associada a eles
+        const result = await pool.query(`
+            SELECT c.*, e.razao_social as empresa_nome 
+            FROM contatos c 
+            LEFT JOIN empresas e ON c.empresa_id = e.id 
+            ORDER BY c.nome ASC
+        `);
+        res.json(result.rows);
+    } catch (erro) {
+        console.error("🚨 Erro ao buscar contatos:", erro);
+        res.status(500).json({ error: 'Erro ao conectar com o banco de dados.' });
+    }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
