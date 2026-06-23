@@ -536,6 +536,36 @@ app.put('/api/oportunidades/:id/status', async (req, res) => {
     }
 });
 
+// Edição de Oportunidade (Atualizada com Frete Negociado e Tipo de Tabela)
+app.put('/api/oportunidades/:id/dados', async (req, res) => {
+    const token = req.headers.authorization;
+    if (token !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
+    
+    const { rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, valor_frete, tabela_preco } = req.body;
+    try {
+        const valNfTratado = valor_nf === '' ? null : valor_nf;
+        const valFreteTratado = valor_frete === '' ? null : valor_frete;
+        
+        await pool.query(
+            `UPDATE oportunidades SET 
+                rota_origem = COALESCE($1, rota_origem), 
+                rota_destino = COALESCE($2, rota_destino), 
+                peso_carga = COALESCE($3, peso_carga), 
+                volume_carga = COALESCE($4, volume_carga), 
+                valor_nf = COALESCE($5, valor_nf),
+                valor_frete = COALESCE($6, valor_frete),
+                tabela_preco = COALESCE($7, tabela_preco),
+                data_atualizacao = CURRENT_TIMESTAMP 
+             WHERE id = $8`,
+            [rota_origem, rota_destino, peso_carga, volume_carga, valNfTratado, valFreteTratado, tabela_preco, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (erro) { 
+        console.error("🚨 Erro ao atualizar oportunidade:", erro);
+        res.status(500).json({ error: 'Erro ao atualizar oportunidade.' }); 
+    }
+});
+
 // ==========================================
 // ROTAS DE EDIÇÃO (ENRIQUECIMENTO DE DADOS)
 // ==========================================
