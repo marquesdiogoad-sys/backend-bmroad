@@ -7,8 +7,23 @@ import { isaSystemInstruction } from './isaPrompt.js';
 
 dotenv.config();
 const app = express();
-app.use(cors());
+
+// --- CONFIGURAÇÃO DE CORS ROBUSTA ---
+app.use(cors({
+    origin: [
+        'https://www.bmroadtransportes.com.br', 
+        'https://bmroadtransportes.com.br'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
+
+// Adiciona suporte para requisições de pré-flight
+app.options('*', cors());
+
 app.use(express.json());
+// ------------------------------------
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
