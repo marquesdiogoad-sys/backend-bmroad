@@ -138,7 +138,7 @@ app.post('/api/chat', async (req, res) => {
 
         const chat = model.startChat({ history: history });
         const result = await chat.sendMessage(userMessage);
-
+        let cotacaoFinalizada = false;
         let aiResponseText = result.response.text();
         const functionCalls = result.response.functionCalls();
 
@@ -218,6 +218,7 @@ app.post('/api/chat', async (req, res) => {
                     }
 
                     if (args.cotacao_finalizada) {
+                        cotacaoFinalizada = true; // <-- ADICIONAR ESTA LINHA
                         const resLeadCompleto = await pool.query('SELECT * FROM leads_cotacoes WHERE thread_id = $1', [threadId]);
                         
                         if (resLeadCompleto.rows.length > 0) {
@@ -249,11 +250,11 @@ app.post('/api/chat', async (req, res) => {
         }
 
         const updatedHistory = await chat.getHistory();
-        res.json({ reply: aiResponseText, history: updatedHistory, threadId: threadId });
+        res.json({ reply: aiResponseText, history: updatedHistory, threadId: threadId, finalizada: cotacaoFinalizada }); // <-- ADICIONAR finalizada
 
     } catch (erro) {
         console.error("🚨 Erro na API do Chat:", erro);
-        res.status(500).json({ reply: "Peço imensa desculpa, estou a ter uma pequena falha de conexão. Podemos retomar?", history, threadId });
+        res.status(500).json({ reply: "Peço imensa desculpa, estou a ter uma pequena falha de conexão. Podemos retomar?", history, threadId, finalizada: false });
     }
 });
 
