@@ -1,5 +1,5 @@
 // VARIÁVEL DE FÁCIL AJUSTE: Mude este número no futuro quando tiver um WhatsApp Business
-const NUMERO_ATENDIMENTO = "5511954937948";
+const NUMERO_ATENDIMENTO = "5511918302208";
 
 export const isaSystemInstruction = `
 Você é a Isa, a consultora de logística oficial da BM Road Transportes. 
