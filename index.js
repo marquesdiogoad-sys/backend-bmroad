@@ -12,7 +12,10 @@ const app = express();
 app.use(cors({
     origin: [
         'https://www.bmroadtransportes.com.br', 
-        'https://bmroadtransportes.com.br'
+        'https://bmroadtransportes.com.br',
+        'https://crm.bmroadtransportes.com.br', // <-- PERMISSÃO ADICIONADA PARA O CRM
+        'http://localhost:3000', // <-- PERMISSÃO PARA TESTES LOCAIS (OPCIONAL)
+        'http://localhost:5000'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
