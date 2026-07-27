@@ -52,6 +52,25 @@ const ferramentas = [{
     }]
 }];
 
+// --- FUNÇÕES DE PADRONIZAÇÃO (CRM) ---
+function formatarCNPJ(cnpj) {
+    if (!cnpj) return null;
+    const n = cnpj.replace(/\D/g, '');
+    if (n.length !== 14) return cnpj; 
+    return n.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+}
+
+function formatarTelefone(tel) {
+    if (!tel) return null;
+    const n = tel.replace(/\D/g, '');
+    if (n.length === 11) {
+        return n.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3"); // Celular
+    } else if (n.length === 10) {
+        return n.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3"); // Fixo
+    }
+    return tel; 
+}
+
 // --- FUNÇÕES DE VALIDAÇÃO (SEGURANÇA) ---
 function validarTelefoneBR(telefone) {
     if (!telefone) return true;
@@ -166,13 +185,17 @@ app.post('/api/chat', async (req, res) => {
                 }
 
                 if (podeSalvar) {
+                    // PADRONIZAÇÃO ANTES DE GRAVAR
+                    const cnpjPadrao = formatarCNPJ(args.cnpj);
+                    const telefonePadrao = formatarTelefone(args.telefone);
+
                     const valoresBD = [
-                        args.cnpj ?? null,
+                        cnpjPadrao ?? null,
                         args.empresa ?? null,
                         args.rota_origem ?? null,
                         args.rota_destino ?? null,
                         args.nome_contato ?? null,
-                        args.telefone ?? null,
+                        telefonePadrao ?? null,
                         args.peso_carga ?? null,
                         args.volume_carga ?? null,
                         args.valor_nf ?? null,
@@ -301,12 +324,16 @@ app.post('/api/formulario', async (req, res) => {
         let empresaReal = validacao.razao_social;
         const observacoes = `Mensagem original do cliente: ${mensagem}`;
 
+        // Aplica a formatação final para o Adminer/CRM
+        const cnpjPadrao = formatarCNPJ(cnpj);
+        const telefonePadrao = formatarTelefone(telefone);
+
         await pool.query(`
             INSERT INTO leads_cotacoes
             (nome_contato, empresa, cnpj, telefone, email, tipo_mercadoria, particularidades, canal_origem, status, thread_id, rota_origem, rota_destino)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         `, [
-            nome, empresaReal, cnpjLimpo, telefone, email, necessidade, observacoes,
+            nome, empresaReal, cnpjPadrao, telefonePadrao, email, necessidade, observacoes,
             'Formulario Site', 'Novo Lead', threadId, 'A definir', 'A definir'
         ]);
 
