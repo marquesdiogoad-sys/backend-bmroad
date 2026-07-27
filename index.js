@@ -52,21 +52,21 @@ const ferramentas = [{
     }]
 }];
 
-// --- FUNÇÕES DE PADRONIZAÇÃO (CRM) ---
+// --- FUNÇÕES DE PADRONIZAÇÃO ROBUSTAS (CRM) ---
 function formatarCNPJ(cnpj) {
     if (!cnpj) return null;
-    const n = cnpj.replace(/\D/g, '');
+    const n = String(cnpj).replace(/\D/g, ''); // O "String()" salva a vida aqui!
     if (n.length !== 14) return cnpj; 
-    return n.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+    return `${n.substring(0, 2)}.${n.substring(2, 5)}.${n.substring(5, 8)}/${n.substring(8, 12)}-${n.substring(12, 14)}`;
 }
 
 function formatarTelefone(tel) {
     if (!tel) return null;
-    const n = tel.replace(/\D/g, '');
+    const n = String(tel).replace(/\D/g, '');
     if (n.length === 11) {
-        return n.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3"); // Celular
+        return `(${n.substring(0, 2)}) ${n.substring(2, 7)}-${n.substring(7, 11)}`; // Celular
     } else if (n.length === 10) {
-        return n.replace(/^(\d{2})(\d{4})(\d{4})/, "($1) $2-$3"); // Fixo
+        return `(${n.substring(0, 2)}) ${n.substring(2, 6)}-${n.substring(6, 10)}`; // Fixo
     }
     return tel; 
 }
