@@ -1,4 +1,7 @@
 import pkg from 'pg';
+import dotenv from 'dotenv';
+dotenv.config(); // <-- LÊ AS SENHAS ANTES DE TENTAR CONECTAR!
+
 const { Pool } = pkg;
 
 // Configuração da ligação ao PostgreSQL utilizando as Variáveis de Ambiente do Easypanel
@@ -18,7 +21,7 @@ pool.on('error', (err, client) => {
 // Teste inicial de conexão ao arrancar o servidor
 pool.query('SELECT NOW()', (err, res) => {
     if (err) {
-        console.error('❌ Erro ao conectar ao PostgreSQL. Verifique as credenciais no Easypanel.', err.message);
+        console.error('❌ Ocorreu um erro real ao conectar:', err);
     } else {
         console.log('✅ Conectado ao PostgreSQL com sucesso! Micro-CRM Operacional.');
     }

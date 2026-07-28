@@ -15,7 +15,11 @@ app.use(cors({
         'https://bmroadtransportes.com.br',
         'https://crm.bmroadtransportes.com.br',
         'http://localhost:3000',
-        'http://localhost:5000'
+        'http://localhost:5000',
+        'http://127.0.0.1:5501', // <-- O seu Live Server atual
+        'http://127.0.0.1:5500', // <-- Porta padrão alternativa do Live Server
+        'http://localhost:5501',
+        'http://localhost:5500'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
