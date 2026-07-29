@@ -1,8 +1,9 @@
-import pkg from 'pg';
+import pg from 'pg';
 import dotenv from 'dotenv';
+
 dotenv.config(); // <-- LÊ AS SENHAS ANTES DE TENTAR CONECTAR!
 
-const { Pool } = pkg;
+const { Pool } = pg;
 
 // Configuração da ligação ao PostgreSQL utilizando as Variáveis de Ambiente do Easypanel
 const pool = new Pool({

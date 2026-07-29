@@ -8,25 +8,8 @@ import { isaSystemInstruction } from './isaPrompt.js';
 dotenv.config();
 const app = express();
 
-// --- CONFIGURAÇÃO DE CORS ROBUSTA ---
-app.use(cors({
-    origin: [
-        'https://www.bmroadtransportes.com.br', 
-        'https://bmroadtransportes.com.br',
-        'https://crm.bmroadtransportes.com.br',
-        'http://localhost:3000',
-        'http://localhost:5000',
-        'http://127.0.0.1:5501', // <-- O seu Live Server atual
-        'http://127.0.0.1:5500', // <-- Porta padrão alternativa do Live Server
-        'http://localhost:5501',
-        'http://localhost:5500'
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
-
-app.options('*', cors());
+// --- CONFIGURAÇÃO DE CORS SIMPLIFICADA PARA DESENVOLVIMENTO ---
+app.use(cors());
 app.use(express.json());
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -74,7 +57,7 @@ function formatarTelefone(tel) {
 
 function validarTelefoneBR(telefone) {
     if (!telefone) return true;
-    const numeros = telefone.replace(/\D/g, '');
+    const numeros = String(telefone).replace(/\D/g, '');
     if (numeros.length !== 10 && numeros.length !== 11) return false;
     const ddd = parseInt(numeros.substring(0, 2));
     if (ddd < 11 || ddd > 99) return false;
@@ -88,7 +71,7 @@ function validarTelefoneBR(telefone) {
 
 async function consultarCNPJ(cnpjOriginal) {
     if (!cnpjOriginal) return { valido: false, erro: "CNPJ é obrigatório." };
-    const cnpjNumeros = cnpjOriginal.replace(/\D/g, '');
+    const cnpjNumeros = String(cnpjOriginal).replace(/\D/g, '');
     if (cnpjNumeros.length !== 14) return { valido: false, erro: "O CNPJ precisa ter exatamente 14 números." };
 
     try {
@@ -253,7 +236,7 @@ app.post('/api/formulario', async (req, res) => {
         if (!isEmailCorporativo(email)) return res.status(400).json({ success: false, message: 'Utilize e-mail corporativo.' });
         if (!validarTelefoneBR(telefone)) return res.status(400).json({ success: false, message: 'Telefone inválido.' });
 
-        const validacao = await consultarCNPJ(cnpj ? cnpj.replace(/\D/g, '') : '');
+        const validacao = await consultarCNPJ(cnpj ? String(cnpj).replace(/\D/g, '') : '');
         if (!validacao.valido) return res.status(400).json({ success: false, message: validacao.erro || 'CNPJ não encontrado.' });
 
         await pool.query(`
@@ -288,9 +271,13 @@ app.post('/api/login', (req, res) => {
 app.get('/api/leads', async (req, res) => {
     if (req.headers.authorization !== 'Bearer bmroad_auth_token_secure_xyz') return res.status(401).json({ error: 'Acesso Negado.' });
     try {
-        const result = await pool.query('SELECT * FROM leads_cotacoes ORDER BY data_atualizacao DESC');
+        // Ordena por 'id DESC' para garantir compatibilidade total com a tabela local
+        const result = await pool.query('SELECT * FROM leads_cotacoes ORDER BY id DESC');
         res.json(result.rows);
-    } catch (erro) { res.status(500).json({ error: 'Erro banco.' }); }
+    } catch (erro) { 
+        console.error("🚨 Erro real na consulta /api/leads:", erro);
+        res.status(500).json({ error: 'Erro no banco de dados.' }); 
+    }
 });
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
@@ -315,7 +302,7 @@ app.post('/api/leads/:id/efetivar', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Lead não encontrado.' });
         }
         const lead = resLead.rows[0];
-        const cnpjIdentificador = lead.cnpj ? lead.cnpj.replace(/\D/g, '') : (lead.empresa ? lead.empresa.trim().toLowerCase() : `emp_${Date.now()}`);
+        const cnpjIdentificador = lead.cnpj ? String(lead.cnpj).replace(/\D/g, '') : (lead.empresa ? String(lead.empresa).trim().toLowerCase() : `emp_${Date.now()}`);
 
         let empresaId;
         let contatoId;
@@ -340,7 +327,7 @@ app.post('/api/leads/:id/efetivar', async (req, res) => {
             contatoId = rNovoCont.rows[0].id;
         }
 
-        // 4. Cria Oportunidade (Proteção: Se 'contato_id' não for suportado pela sua base local, gravamos sem ele para não dar erro 500)
+        // 4. Cria Oportunidade
         try {
             await client.query(
                 `INSERT INTO oportunidades (empresa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf) 
@@ -382,7 +369,13 @@ app.get('/api/empresas/:id/360', async (req, res) => {
 
 app.get('/api/empresas', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM empresas ORDER BY id DESC');
+        const result = await pool.query(`
+            SELECT e.*, 
+                   (SELECT status_comercial FROM oportunidades o WHERE o.empresa_id = e.id ORDER BY id DESC LIMIT 1) as status_comercial,
+                   (SELECT rota_origem FROM oportunidades o WHERE o.empresa_id = e.id ORDER BY id DESC LIMIT 1) as rota_origem,
+                   (SELECT rota_destino FROM oportunidades o WHERE o.empresa_id = e.id ORDER BY id DESC LIMIT 1) as rota_destino
+            FROM empresas e ORDER BY e.id DESC
+        `);
         res.json(result.rows);
     } catch (e) { res.status(500).json({ error: 'Erro banco.' }); }
 });
@@ -432,4 +425,4 @@ app.put('/api/contatos/:id', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Motor IA BM Road : Servidor rodando na porta ${PORT}!`));
