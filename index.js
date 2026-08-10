@@ -487,57 +487,10 @@ app.put('/api/contatos/:id', async (req, res) => {
 
 app.get('/', (req, res) => res.send('🚀 Motor IA BM Road : Blindado e Operacional!'));
 
-// ==========================================
-// ROTAS DE CRIAÇÃO RÁPIDA (VISÃO 360°)
-// ==========================================
+// =================================================================
+// ROTAS ÚNICAS E OTIMIZADAS PARA CRIAÇÃO (BOTÃO + E FICHA 360°)
+// =================================================================
 
-app.post('/api/oportunidades', async (req, res) => {
-    const b = req.body;
-    try {
-        await pool.query(
-            `INSERT INTO oportunidades (empresa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, valor_frete, tabela_preco) 
-             VALUES ($1, $2, 'Em Cotação', $3, $4, $5, $6, $7, $8, $9)`,
-            [b.empresa_id, b.tipo_oportunidade, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco || 'Avulso']
-        );
-        res.json({ success: true });
-    } catch (e) {
-        console.error("Erro ao criar oportunidade:", e);
-        res.status(500).json({ error: 'Erro ao criar oportunidade.' });
-    }
-});
-
-app.post('/api/contatos', async (req, res) => {
-    const b = req.body;
-    try {
-        await pool.query(
-            `INSERT INTO contatos (empresa_id, nome, cargo, telefone, email) 
-             VALUES ($1, $2, $3, $4, $5)`,
-            [b.empresa_id, b.nome, b.cargo, b.telefone, b.email]
-        );
-        res.json({ success: true });
-    } catch (e) {
-        console.error("Erro ao criar contato:", e);
-        res.status(500).json({ error: 'Erro ao criar contato.' });
-    }
-});
-
-app.post('/api/empresas', async (req, res) => {
-    const b = req.body;
-    try {
-        await pool.query(
-            `INSERT INTO empresas (razao_social, cnpj, status) VALUES ($1, $2, $3)`,
-            [b.razao_social, b.cnpj, b.status || 'Ativo']
-        );
-        res.json({ success: true });
-    } catch (e) {
-        console.error("Erro ao criar empresa:", e);
-        res.status(500).json({ error: 'Erro ao criar empresa.' });
-    }
-});
-
-// ==========================================
-// ROTAS PARA CRIAÇÃO MANUAL (BOTÃO + GLOBAL)
-// ==========================================
 app.post('/api/empresas', async (req, res) => {
     const b = req.body;
     try {
@@ -555,14 +508,13 @@ app.post('/api/empresas', async (req, res) => {
 app.post('/api/contatos', async (req, res) => {
     const b = req.body;
     try {
-        // Tenta salvar com o cargo (se a coluna existir no seu banco)
+        // Tenta inserir com o cargo, se a coluna não existir, o catch trata
         try {
             await pool.query(
                 `INSERT INTO contatos (empresa_id, nome, telefone, email, cargo) VALUES ($1, $2, $3, $4, $5)`,
                 [b.empresa_id, b.nome, b.telefone, b.email, b.cargo || '']
             );
         } catch (dbErr) {
-            // Fallback: se a coluna cargo não existir, salva sem ela
             await pool.query(
                 `INSERT INTO contatos (empresa_id, nome, telefone, email) VALUES ($1, $2, $3, $4)`,
                 [b.empresa_id, b.nome, b.telefone, b.email]
@@ -579,9 +531,9 @@ app.post('/api/oportunidades', async (req, res) => {
     const b = req.body;
     try {
         await pool.query(
-            `INSERT INTO oportunidades (empresa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino) 
-             VALUES ($1, $2, 'Em Cotação', $3, $4)`,
-            [b.empresa_id, b.tipo_oportunidade, b.rota_origem, b.rota_destino]
+            `INSERT INTO oportunidades (empresa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, valor_frete, tabela_preco) 
+             VALUES ($1, $2, 'Em Cotação', $3, $4, $5, $6, $7, $8, $9)`,
+            [b.empresa_id, b.tipo_oportunidade, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco || 'Avulso']
         );
         res.json({ success: true });
     } catch (e) {
