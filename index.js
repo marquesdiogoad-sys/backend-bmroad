@@ -542,5 +542,62 @@ app.post('/api/oportunidades', async (req, res) => {
     }
 });
 
+// =================================================================
+// 🎯 ROTAS DE FECHAMENTO E TAREFAS (CRM KANBAN V2)
+// =================================================================
+
+// 1. Fechamento de Oportunidade (Ganha/Perdida)
+app.put('/api/oportunidades/:id/checkout', async (req, res) => {
+    const { status_comercial, motivo_perda, observacao_fechamento, valor_frete, valor_nf, peso_carga, volume_carga } = req.body;
+    try {
+        await pool.query(
+            `UPDATE oportunidades SET
+                status_comercial = $1,
+                motivo_perda = $2,
+                observacao_fechamento = $3,
+                valor_frete = COALESCE($4, valor_frete),
+                valor_nf = COALESCE($5, valor_nf),
+                peso_carga = COALESCE($6, peso_carga),
+                volume_carga = COALESCE($7, volume_carga),
+                data_fechamento = CURRENT_TIMESTAMP
+             WHERE id = $8`,
+            [status_comercial, motivo_perda, observacao_fechamento, valor_frete, valor_nf, peso_carga, volume_carga, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Erro no checkout:", e);
+        res.status(500).json({ error: 'Erro ao processar fechamento.' });
+    }
+});
+
+// 2. Buscar Tarefas de uma Oportunidade
+app.get('/api/oportunidades/:id/tarefas', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM tarefas_crm WHERE oportunidade_id = $1 ORDER BY data_limite ASC', [req.params.id]);
+        res.json(result.rows);
+    } catch (e) { res.status(500).json({ error: 'Erro ao buscar tarefas.' }); }
+});
+
+// 3. Criar Nova Tarefa
+app.post('/api/oportunidades/:id/tarefas', async (req, res) => {
+    const { tipo, descricao, data_limite } = req.body;
+    try {
+        const result = await pool.query(
+            `INSERT INTO tarefas_crm (oportunidade_id, tipo, descricao, data_limite, status)
+             VALUES ($1, $2, $3, $4, 'Pendente') RETURNING *`,
+            [req.params.id, tipo, descricao, data_limite]
+        );
+        res.json({ success: true, tarefa: result.rows[0] });
+    } catch (e) { res.status(500).json({ error: 'Erro ao criar tarefa.' }); }
+});
+
+// 4. Alterar Status da Tarefa
+app.put('/api/tarefas/:id/status', async (req, res) => {
+    try {
+        await pool.query('UPDATE tarefas_crm SET status = $1 WHERE id = $2', [req.body.status, req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: 'Erro ao atualizar tarefa.' }); }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Motor IA BM Road : Servidor rodando na porta ${PORT}!`));
