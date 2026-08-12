@@ -504,9 +504,10 @@ app.put('/api/oportunidades/:id/dados', async (req, res) => {
                  volume_carga = COALESCE($5, volume_carga), 
                  valor_nf = COALESCE($6, valor_nf), 
                  valor_frete = COALESCE($7, valor_frete), 
-                 tabela_preco = COALESCE($8, tabela_preco) 
-             WHERE id = $9`, 
-            [b.contato_id || null, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco, req.params.id]
+                 tabela_preco = COALESCE($8, tabela_preco),
+                 tipo_oportunidade = COALESCE($9, tipo_oportunidade)
+             WHERE id = $10`, 
+            [b.contato_id || null, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco, b.tipo_oportunidade, req.params.id]
         );
         res.json({ success: true });
     } catch (e) { 
@@ -526,9 +527,14 @@ app.put('/api/empresas/:id', async (req, res) => {
                 porte = COALESCE($4, porte), 
                 endereco = COALESCE($5, endereco), 
                 site = COALESCE($6, site),
-                observacoes = COALESCE($7, observacoes)
-            WHERE id = $8`,
-            [b.razao_social, b.cnpj, b.segmento, b.porte, b.endereco, b.site, b.observacoes, req.params.id]
+                observacoes = COALESCE($7, observacoes),
+                logradouro = COALESCE($8, logradouro),
+                numero = COALESCE($9, numero),
+                cep = COALESCE($10, cep),
+                cidade = COALESCE($11, cidade),
+                uf = COALESCE($12, uf)
+            WHERE id = $13`,
+            [b.razao_social, b.cnpj, b.segmento, b.porte, b.endereco, b.site, b.observacoes, b.logradouro, b.numero, b.cep, b.cidade, b.uf, req.params.id]
         );
         res.json({ success: true });
     } catch (e) { 
@@ -664,6 +670,54 @@ app.post('/api/oportunidades/:id/tarefas', async (req, res) => {
 app.put('/api/tarefas/:id/status', async (req, res) => {
     try {
         await pool.query('UPDATE tarefas_crm SET status = $1 WHERE id = $2', [req.body.status, req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: 'Erro ao atualizar tarefa.' }); }
+});
+
+// =================================================================
+// 📝 HISTÓRICO, INTERAÇÕES E EDIÇÃO DE TAREFAS (NOVO)
+// =================================================================
+
+// Buscar histórico de uma oportunidade (Preservação de Histórico)
+app.get('/api/oportunidades/:id/interacoes', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM interacoes_crm WHERE oportunidade_id = $1 ORDER BY created_at DESC', [req.params.id]);
+        res.json(result.rows);
+    } catch (e) { res.status(500).json({ error: 'Erro ao buscar interações.' }); }
+});
+
+// Criar nova interação/anotação
+app.post('/api/oportunidades/:id/interacoes', async (req, res) => {
+    const { tipo, descricao, empresa_id } = req.body;
+    try {
+        const result = await pool.query(
+            `INSERT INTO interacoes_crm (oportunidade_id, empresa_id, tipo, descricao) VALUES ($1, $2, $3, $4) RETURNING *`,
+            [req.params.id, empresa_id || null, tipo || 'Anotação', descricao]
+        );
+        res.json({ success: true, interacao: result.rows[0] });
+    } catch (e) { res.status(500).json({ error: 'Erro ao criar interação.' }); }
+});
+
+// Editar uma interação (Método PUT sem duplicar registro)
+app.put('/api/interacoes/:id', async (req, res) => {
+    const { tipo, descricao } = req.body;
+    try {
+        await pool.query(
+            `UPDATE interacoes_crm SET tipo = COALESCE($1, tipo), descricao = COALESCE($2, descricao), updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+            [tipo, descricao, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: 'Erro ao atualizar interação.' }); }
+});
+
+// Editar dados completos de uma Tarefa (Título, Data e Hora corrigidas)
+app.put('/api/tarefas/:id', async (req, res) => {
+    const { tipo, descricao, data_limite } = req.body;
+    try {
+        await pool.query(
+            `UPDATE tarefas_crm SET tipo = COALESCE($1, tipo), descricao = COALESCE($2, descricao), data_limite = COALESCE($3, data_limite) WHERE id = $4`,
+            [tipo, descricao, data_limite, req.params.id]
+        );
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: 'Erro ao atualizar tarefa.' }); }
 });
