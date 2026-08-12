@@ -351,10 +351,14 @@ app.get('/api/exportar/empresas', async (req, res) => {
 // =================================================================
 app.get('/api/oportunidades/kanban', async (req, res) => {
     try {
+        // Agora buscamos a empresa, o contato específico e ocultamos Ganhas/Perdidas
         const query = `
-            SELECT o.*, e.razao_social, e.cnpj 
+            SELECT o.*, e.razao_social, e.cnpj, c.nome as nome_contato, f.nome as nome_etapa 
             FROM oportunidades o
             LEFT JOIN empresas e ON o.empresa_id = e.id
+            LEFT JOIN contatos c ON o.contato_id = c.id
+            LEFT JOIN funil_etapas f ON o.etapa_id = f.id
+            WHERE o.status_comercial NOT IN ('Ganha', 'Perdida', 'Fechado / Ganho')
             ORDER BY o.data_atualizacao DESC
         `;
         const result = await pool.query(query);
@@ -362,6 +366,26 @@ app.get('/api/oportunidades/kanban', async (req, res) => {
     } catch (error) {
         console.error('Erro ao buscar kanban:', error);
         res.status(500).json({ error: 'Erro ao buscar oportunidades do Kanban.' });
+    }
+});
+
+// Busca os dados ultra-ricos para o Card SPRINT da Oportunidade
+app.get('/api/oportunidades/:id/detalhes', async (req, res) => {
+    try {
+        const query = `
+            SELECT o.*, e.razao_social, e.cnpj, c.nome as nome_contato, c.telefone as telefone_contato, f.nome as nome_etapa 
+            FROM oportunidades o
+            LEFT JOIN empresas e ON o.empresa_id = e.id
+            LEFT JOIN contatos c ON o.contato_id = c.id
+            LEFT JOIN funil_etapas f ON o.etapa_id = f.id
+            WHERE o.id = $1
+        `;
+        const result = await pool.query(query, [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Oportunidade não encontrada' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Erro ao buscar detalhes da oportunidade:', error);
+        res.status(500).json({ error: 'Erro interno.' });
     }
 });
 
@@ -531,9 +555,9 @@ app.post('/api/oportunidades', async (req, res) => {
     const b = req.body;
     try {
         await pool.query(
-            `INSERT INTO oportunidades (empresa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, valor_frete, tabela_preco) 
-             VALUES ($1, $2, 'Em Cotação', $3, $4, $5, $6, $7, $8, $9)`,
-            [b.empresa_id, b.tipo_oportunidade, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco || 'Avulso']
+            `INSERT INTO oportunidades (empresa_id, contato_id, etapa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, valor_frete, tabela_preco) 
+             VALUES ($1, $2, $3, $4, 'Em Cotação', $5, $6, $7, $8, $9, $10, $11)`,
+            [b.empresa_id, b.contato_id || null, b.etapa_id || null, b.tipo_oportunidade, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco || 'Avulso']
         );
         res.json({ success: true });
     } catch (e) {
