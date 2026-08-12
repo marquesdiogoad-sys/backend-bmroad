@@ -476,9 +476,24 @@ app.put('/api/oportunidades/:id/status', async (req, res) => {
 app.put('/api/oportunidades/:id/dados', async (req, res) => {
     const b = req.body;
     try {
-        await pool.query(`UPDATE oportunidades SET rota_origem = COALESCE($1, rota_origem), rota_destino = COALESCE($2, rota_destino), peso_carga = COALESCE($3, peso_carga), volume_carga = COALESCE($4, volume_carga), valor_nf = COALESCE($5, valor_nf), valor_frete = COALESCE($6, valor_frete), tabela_preco = COALESCE($7, tabela_preco) WHERE id = $8`, [b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco, req.params.id]);
+        await pool.query(
+            `UPDATE oportunidades 
+             SET contato_id = $1, 
+                 rota_origem = COALESCE($2, rota_origem), 
+                 rota_destino = COALESCE($3, rota_destino), 
+                 peso_carga = COALESCE($4, peso_carga), 
+                 volume_carga = COALESCE($5, volume_carga), 
+                 valor_nf = COALESCE($6, valor_nf), 
+                 valor_frete = COALESCE($7, valor_frete), 
+                 tabela_preco = COALESCE($8, tabela_preco) 
+             WHERE id = $9`, 
+            [b.contato_id || null, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco, req.params.id]
+        );
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Erro banco.' }); }
+    } catch (e) { 
+        console.error("Erro ao atualizar dados da oportunidade:", e);
+        res.status(500).json({ error: 'Erro banco.' }); 
+    }
 });
 
 app.put('/api/empresas/:id', async (req, res) => {
