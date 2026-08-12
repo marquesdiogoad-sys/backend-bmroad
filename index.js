@@ -351,14 +351,13 @@ app.get('/api/exportar/empresas', async (req, res) => {
 // =================================================================
 app.get('/api/oportunidades/kanban', async (req, res) => {
     try {
-        // Agora buscamos a empresa, o contato específico e ocultamos Ganhas/Perdidas
         const query = `
             SELECT o.*, e.razao_social, e.cnpj, c.nome as nome_contato, f.nome as nome_etapa 
             FROM oportunidades o
             LEFT JOIN empresas e ON o.empresa_id = e.id
             LEFT JOIN contatos c ON o.contato_id = c.id
             LEFT JOIN funil_etapas f ON o.etapa_id = f.id
-            WHERE o.status_comercial NOT IN ('Ganha', 'Perdida', 'Fechado / Ganho')
+            WHERE (o.status_comercial IS NULL OR o.status_comercial NOT IN ('Ganha', 'Perdida', 'Fechado / Ganho'))
             ORDER BY o.data_atualizacao DESC
         `;
         const result = await pool.query(query);
@@ -382,7 +381,12 @@ app.get('/api/oportunidades/:id/detalhes', async (req, res) => {
         `;
         const result = await pool.query(query, [req.params.id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Oportunidade não encontrada' });
-        res.json(result.rows[0]);
+        
+        const op = result.rows[0];
+        // Puxa apenas os contatos vinculados a esta empresa específica
+        const contatosRes = await pool.query('SELECT id, nome, cargo FROM contatos WHERE empresa_id = $1 ORDER BY nome ASC', [op.empresa_id]);
+        
+        res.json({ ...op, contatos_empresa: contatosRes.rows });
     } catch (error) {
         console.error('Erro ao buscar detalhes da oportunidade:', error);
         res.status(500).json({ error: 'Erro interno.' });
@@ -487,9 +491,10 @@ app.put('/api/empresas/:id', async (req, res) => {
                 segmento = COALESCE($3, segmento), 
                 porte = COALESCE($4, porte), 
                 endereco = COALESCE($5, endereco), 
-                site = COALESCE($6, site) 
-            WHERE id = $7`,
-            [b.razao_social, b.cnpj, b.segmento, b.porte, b.endereco, b.site, req.params.id]
+                site = COALESCE($6, site),
+                observacoes = COALESCE($7, observacoes)
+            WHERE id = $8`,
+            [b.razao_social, b.cnpj, b.segmento, b.porte, b.endereco, b.site, b.observacoes, req.params.id]
         );
         res.json({ success: true });
     } catch (e) { 
@@ -557,8 +562,14 @@ app.post('/api/oportunidades', async (req, res) => {
         await pool.query(
             `INSERT INTO oportunidades (empresa_id, contato_id, etapa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, valor_frete, tabela_preco) 
              VALUES ($1, $2, $3, $4, 'Em Cotação', $5, $6, $7, $8, $9, $10, $11)`,
-            [b.empresa_id, b.contato_id || null, b.etapa_id || null, b.tipo_oportunidade, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco || 'Avulso']
+            [b.empresa_id, b.contato_id || null, b.etapa_id || 1, b.tipo_oportunidade, b.rota_origem, b.rota_destino, b.peso_carga, b.volume_carga, b.valor_nf || null, b.valor_frete || null, b.tabela_preco || 'Avulso']
         );
+
+        // REGRA AUTOMÁTICA: Passa a empresa para ATIVO no banco de dados
+        if (b.empresa_id) {
+            await pool.query(`UPDATE empresas SET status = 'Ativo' WHERE id = $1`, [b.empresa_id]);
+        }
+
         res.json({ success: true });
     } catch (e) {
         console.error("Erro ao criar oportunidade:", e);
