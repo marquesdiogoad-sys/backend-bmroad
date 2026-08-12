@@ -412,9 +412,6 @@ app.post('/api/leads/:id/efetivar', async (req, res) => {
     const leadId = req.params.id;
     const { tipo_oportunidade, etapa_id, status_comercial } = req.body; 
     
-    const servico = ['Carga Fracionada', 'Armazenagem Hub SP', 'Carga Dedicada', 'Outros'].includes(tipo_oportunidade) ? tipo_oportunidade : 'Outros';
-    const statusReal = status_comercial || 'Em Cotação';
-
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -427,20 +424,42 @@ app.post('/api/leads/:id/efetivar', async (req, res) => {
         const resEmp = await client.query('SELECT id FROM empresas WHERE cnpj = $1', [cnpjIdentificador]);
         if (resEmp.rows.length > 0) empId = resEmp.rows[0].id;
         else { 
-            const r = await client.query(`INSERT INTO empresas (razao_social, cnpj) VALUES ($1, $2) RETURNING id`, [lead.empresa || 'Empresa Em Processamento', cnpjIdentificador]); 
+            const r = await client.query(`INSERT INTO empresas (razao_social, cnpj, status) VALUES ($1, $2, 'Ativo') RETURNING id`, [lead.empresa || 'Empresa Em Processamento', cnpjIdentificador]); 
             empId = r.rows[0].id; 
         }
 
+        // Garante que a empresa fique com status Ativo
+        await client.query(`UPDATE empresas SET status = 'Ativo' WHERE id = $1`, [empId]);
+
         const resCont = await client.query('SELECT id FROM contatos WHERE empresa_id = $1 AND (telefone = $2 OR email = $3)', [empId, lead.telefone, lead.email]);
         if (resCont.rows.length > 0) contId = resCont.rows[0].id;
-        else await client.query(`INSERT INTO contatos (empresa_id, nome, telefone, email) VALUES ($1, $2, $3, $4)`, [empId, lead.nome_contato || 'Desconhecido', lead.telefone, lead.email]);
+        else {
+            const rC = await client.query(`INSERT INTO contatos (empresa_id, nome, telefone, email) VALUES ($1, $2, $3, $4) RETURNING id`, [empId, lead.nome_contato || 'Desconhecido', lead.telefone, lead.email]);
+            contId = rC.rows[0].id;
+        }
 
-        await client.query(
-            `INSERT INTO oportunidades (empresa_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, etapa_id) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, 
-            [empId, servico, statusReal, lead.rota_origem, lead.rota_destino, lead.peso_carga, lead.volume_carga, lead.valor_nf, etapa_id || null]
+        const servico = tipo_oportunidade || lead.tipo_mercadoria || 'Carga Fracionada';
+        const etapaFinal = etapa_id || 1;
+        const statusReal = status_comercial || 'Em Cotação';
+
+        // Insere a Oportunidade com TODOS os dados capturados do Lead
+        const resOp = await client.query(
+            `INSERT INTO oportunidades (empresa_id, contato_id, tipo_oportunidade, status_comercial, rota_origem, rota_destino, peso_carga, volume_carga, valor_nf, etapa_id) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`, 
+            [empId, contId, servico, statusReal, lead.rota_origem, lead.rota_destino, lead.peso_carga, lead.volume_carga, lead.valor_nf, etapaFinal]
         );
-        
+
+        const opId = resOp.rows[0].id;
+
+        // Se o lead possuir Particularidades/Resumo do Chat, insere automaticamente como Anotação Interna no histórico!
+        if (lead.particularidades && String(lead.particularidades).trim() !== '') {
+            await client.query(
+                `INSERT INTO tarefas_crm (oportunidade_id, tipo, descricao, data_limite, status)
+                 VALUES ($1, 'Anotação', $2, CURRENT_TIMESTAMP, 'Anotação')`,
+                [opId, `[RESUMO DO LEAD] ${lead.particularidades}`]
+            );
+        }
+
         await client.query('UPDATE leads_cotacoes SET status = $1 WHERE id = $2', ['Efetivado / Qualificado', leadId]);
         await client.query('COMMIT');
         res.json({ success: true, message: 'Empresa efetivada e enviada para o Funil!' });
