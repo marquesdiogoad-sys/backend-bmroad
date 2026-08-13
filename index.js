@@ -325,6 +325,7 @@ app.delete('/api/oportunidades/:id', async (req, res) => {
 // =================================================================
 // ⬇️ ROTA DE EXPORTAÇÃO (CSV)
 // =================================================================
+// --- EXPORTAÇÃO DE EMPRESAS ---
 app.get('/api/exportar/empresas', async (req, res) => {
     try {
         const result = await pool.query('SELECT razao_social, cnpj, cidade, uf, faturamento, classe_abc, status FROM empresas ORDER BY razao_social ASC');
@@ -344,6 +345,54 @@ app.get('/api/exportar/empresas', async (req, res) => {
     } catch (error) {
         res.status(500).send("Erro ao gerar arquivo");
     }
+});
+
+// --- EXPORTAÇÃO DE LEADS ---
+app.get('/api/exportar/leads', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT empresa, cnpj, nome_contato, telefone, rota_origem, rota_destino, canal_origem, status FROM leads_cotacoes ORDER BY data_criacao DESC");
+        if (result.rows.length === 0) return res.status(404).send("Nenhum dado encontrado");
+
+        const colunas = Object.keys(result.rows[0]);
+        let csvString = colunas.join(';') + '\n';
+        result.rows.forEach(row => { csvString += colunas.map(col => `"${row[col] ? String(row[col]).replace(/"/g, '""') : ''}"`).join(';') + '\n'; });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="BM_Road_Leads.csv"');
+        res.send('\uFEFF' + csvString); 
+    } catch (error) { res.status(500).send("Erro ao gerar arquivo"); }
+});
+
+// --- EXPORTAÇÃO DE CONTATOS ---
+app.get('/api/exportar/contatos', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT c.nome, c.cargo, c.telefone, c.email, e.razao_social AS empresa_vinculada FROM contatos c LEFT JOIN empresas e ON c.empresa_id = e.id ORDER BY c.nome ASC");
+        if (result.rows.length === 0) return res.status(404).send("Nenhum dado encontrado");
+
+        const colunas = Object.keys(result.rows[0]);
+        let csvString = colunas.join(';') + '\n';
+        result.rows.forEach(row => { csvString += colunas.map(col => `"${row[col] ? String(row[col]).replace(/"/g, '""') : ''}"`).join(';') + '\n'; });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="BM_Road_Contatos.csv"');
+        res.send('\uFEFF' + csvString); 
+    } catch (error) { res.status(500).send("Erro ao gerar arquivo"); }
+});
+
+// --- EXPORTAÇÃO DO FUNIL (OPORTUNIDADES) ---
+app.get('/api/exportar/funil', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT o.status_comercial, o.tipo_oportunidade, o.rota_origem, o.rota_destino, o.valor_frete, o.valor_nf, e.razao_social as cliente FROM oportunidades o LEFT JOIN empresas e ON o.empresa_id = e.id ORDER BY o.data_atualizacao DESC");
+        if (result.rows.length === 0) return res.status(404).send("Nenhum dado encontrado");
+
+        const colunas = Object.keys(result.rows[0]);
+        let csvString = colunas.join(';') + '\n';
+        result.rows.forEach(row => { csvString += colunas.map(col => `"${row[col] ? String(row[col]).replace(/"/g, '""') : ''}"`).join(';') + '\n'; });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="BM_Road_Kanban.csv"');
+        res.send('\uFEFF' + csvString); 
+    } catch (error) { res.status(500).send("Erro ao gerar arquivo"); }
 });
 
 // =================================================================
